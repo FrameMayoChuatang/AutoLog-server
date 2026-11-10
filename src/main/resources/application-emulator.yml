@@ -1,0 +1,3 @@
+# 로컬 차량 앱 연동용: ./mvnw spring-boot:run -Dspring-boot.run.profiles=emulator
+server:
+  address: ${SERVER_ADDRESS:0.0.0.0}

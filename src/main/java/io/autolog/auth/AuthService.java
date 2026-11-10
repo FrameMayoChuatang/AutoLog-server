@@ -157,7 +157,13 @@ public class AuthService {
     if (!fleet.vehicle(actor.companyId(), vehicle, true).active())
       throw ApiException.conflict("비활성 차량입니다.");
     credentials.revokePairing(actor.companyId(), vehicle);
-    return issue(actor.companyId(), null, vehicle, CredentialKind.PAIRING, pairingTtl);
+    Instant expires = Instant.now().plus(pairingTtl);
+    for (int attempt = 0; attempt < 32; attempt++) {
+      String code = TokenCodec.createPairingCode();
+      if (credentials.tryCreatePairing(actor.companyId(), vehicle, TokenCodec.hash(code), expires))
+        return new IssuedToken(code, expires);
+    }
+    throw ApiException.conflict("페어링 코드를 발급하지 못했습니다. 다시 시도하세요.");
   }
 
   @Transactional

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -21,6 +22,8 @@ public abstract class ApiTestSupport {
   @Autowired protected MockMvc mvc;
   @Autowired protected ObjectMapper json;
   @Autowired protected JdbcTemplate jdbc;
+  private static final AtomicInteger CLIENT_SEQUENCE = new AtomicInteger();
+  private String clientAddress;
   protected String owner, company, vehicle, driver, device, purpose, client;
   protected static final String PASSWORD = "Local-test-password42!";
 
@@ -30,6 +33,7 @@ public abstract class ApiTestSupport {
     if (database == null || !database.endsWith("_test"))
       throw new IllegalStateException("Tests require a dedicated *_test database");
     jdbc.execute("TRUNCATE companies CASCADE");
+    clientAddress = "2001:db8::" + Integer.toHexString(CLIENT_SEQUENCE.incrementAndGet());
     var session = signup("owner@example.test");
     owner = session.path("accessToken").asText();
     company = session.path("admin").path("companyId").asText();
@@ -80,7 +84,13 @@ public abstract class ApiTestSupport {
 
   protected MvcResult response(String method, String url, String token, Object body)
       throws Exception {
-    var request = request(HttpMethod.valueOf(method), url);
+    var request =
+        request(HttpMethod.valueOf(method), url)
+            .with(
+                r -> {
+                  r.setRemoteAddr(clientAddress);
+                  return r;
+                });
     if (token != null) request.header("Authorization", "Bearer " + token);
     if (body != null) request.contentType("application/json").content(json.writeValueAsBytes(body));
     return mvc.perform(request).andReturn();

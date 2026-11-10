@@ -23,5 +23,5 @@ public final class AuthRequests {
 
   public record ActiveStatusRequest(@NotNull Boolean active) {}
 
-  public record PairingRequest(@NotBlank @Size(max = 128) String pairingToken) {}
+  public record PairingRequest(@NotBlank @Pattern(regexp = "[0-9]{8}") String pairingToken) {}
 }
