@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: autolog-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:55432/autolog}
+    username: ${DB_USERNAME:autolog}
+    password: ${DB_PASSWORD:autolog}
+    hikari:
+      maximum-pool-size: 10
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  flyway:
+    enabled: true
+server:
+  port: ${SERVER_PORT:8080}
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  error:
+    include-message: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+autolog:
+  setup-url: ${SETUP_URL:http://localhost:8080/password/setup}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  session-ttl: 12h
+  device-ttl: 90d
+  setup-ttl: 24h
+  pairing-ttl: 10m

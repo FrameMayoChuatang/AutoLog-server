@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:55432/autolog_test}
+    username: ${TEST_DB_USERNAME:autolog}
+    password: ${TEST_DB_PASSWORD:autolog}
