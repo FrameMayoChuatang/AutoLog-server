@@ -1,6 +1,7 @@
 package io.autolog.auth;
 
 import io.autolog.fleet.FleetModels.Vehicle;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -19,6 +20,7 @@ public final class AuthModels {
     PAIRING
   }
 
+  @Schema(anyOf = {AdminProfile.class, VehicleIdentity.class})
   public sealed interface CurrentUser permits AdminProfile, VehicleIdentity {}
 
   public record AdminProfile(

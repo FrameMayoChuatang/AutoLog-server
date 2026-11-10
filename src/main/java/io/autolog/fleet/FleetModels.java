@@ -1,6 +1,7 @@
 package io.autolog.fleet;
 
 import io.autolog.common.ApiException;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -49,6 +50,7 @@ public final class FleetModels {
       boolean locationConsent,
       Instant createdAt) {}
 
+  @Schema(anyOf = {Client.class, Purpose.class})
   public sealed interface CatalogItem permits Client, Purpose {
     UUID id();
 

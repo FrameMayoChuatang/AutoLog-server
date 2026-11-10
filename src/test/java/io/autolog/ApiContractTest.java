@@ -106,5 +106,9 @@ class ApiContractTest extends ApiTestSupport {
     assertThat(properties.has("id")).isTrue();
     assertThat(properties.has("driverName")).isTrue();
     assertThat(properties.has("sourcePayloadHash")).isFalse();
+    assertThat(schema.path("components").path("schemas").path("CurrentUser").path("anyOf").size())
+        .isEqualTo(2);
+    assertThat(schema.path("components").path("schemas").path("CatalogItem").path("anyOf").size())
+        .isEqualTo(2);
   }
 }
