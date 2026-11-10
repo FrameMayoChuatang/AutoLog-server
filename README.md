@@ -46,6 +46,7 @@ docker compose stop    # 데이터 볼륨을 보존한 채 DB 중지
 
 - [API와 차량 동기화 계약](docs/API.md)
 - [확정 범위와 Docs 대응](docs/SCOPE.md)
+- [기능 45개 상세 명세 대조 결과](docs/DOCS_REVIEW.md)
 - [구조·데이터·상태 전이](docs/ARCHITECTURE.md)
 - [통계와 엑셀 출력 기준](docs/REPORTS.md)
 - [개발·커밋·PR 규칙](CONTRIBUTING.md)
