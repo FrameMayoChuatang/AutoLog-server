@@ -1,6 +1,6 @@
 # API 및 차량 앱 연동 계약
 
-기본 URL은 `http://127.0.0.1:8080`입니다. JSON 필드와 모든 요청 스키마는 실행 중인 서버의 `/docs`, `/api/docs`에서 확인할 수 있습니다. `POST` 생성은 201, 나머지 성공은 특별한 표시가 없으면 200, 로그아웃은 204입니다. 운행 동기화 `PUT`은 최초 수신에도 200을 반환합니다.
+PC 기본 URL은 `http://127.0.0.1:8080`, Android Emulator 내부에서는 `http://10.0.2.2:8080`입니다. [에뮬레이터 실행 및 앱 HTTP 설정](ANDROID_LOCAL.md)을 먼저 적용합니다. JSON 필드와 모든 요청 스키마는 실행 중인 서버의 `/docs`, `/api/docs`에서 확인할 수 있습니다. `POST` 생성은 201, 나머지 성공은 특별한 표시가 없으면 200, 로그아웃은 204입니다. 운행 동기화 `PUT`은 최초 수신에도 200을 반환합니다.
 
 인증은 `Authorization: Bearer <accessToken>`입니다. opaque 토큰이므로 JWT처럼 해석하지 않습니다. 회사 ID나 권한을 요청 본문에 넣지 않습니다. 모르는 JSON 필드는 400입니다. `PATCH`의 아래 DTO는 부분 필드 병합이 아니라 해당 편집 폼의 전체 값을 받습니다.
 
@@ -225,7 +225,7 @@ Details 예시:
 |---|---|
 | DB_URL / DB_USERNAME / DB_PASSWORD | 로컬 PostgreSQL |
 | TEST_DB_URL | jdbc:postgresql://localhost:55432/autolog_test |
-| SERVER_ADDRESS / SERVER_PORT | 127.0.0.1 / 8080 |
+| SERVER_ADDRESS / SERVER_PORT | 일반 실행 127.0.0.1 / 8080; emulator 프로필 0.0.0.0 / 8080 |
 | SETUP_URL | http://127.0.0.1:8080/password/setup |
 | CORS_ORIGINS | localhost 및 127.0.0.1의 5173/3000 포트 |
 | AUTOLOG_SESSION_TTL | 12h |

@@ -24,6 +24,15 @@ docker compose up -d --wait
 
 기본 설정으로 바로 실행할 수 있습니다. `.env.example`은 변경할 환경변수의 예시이며 Spring Boot는 `.env` 파일을 자동으로 읽지 않습니다. 쉘에서 `export`하거나 IDE 실행 환경에 지정합니다. Docker의 `DB_PORT`를 바꾸면 `DB_URL`, `TEST_DB_URL`도 맞춰야 합니다.
 
+## Android 에뮬레이터 연결
+
+```sh
+./mvnw spring-boot:run -Dspring-boot.run.profiles=emulator
+# 같은 설정: SERVER_ADDRESS=0.0.0.0 ./mvnw spring-boot:run
+```
+
+`emulator` 프로필은 기본 `0.0.0.0:8080`으로 실행됩니다. 앱의 개발용 기본 URL은 `http://10.0.2.2:8080/`입니다. **앱의 debug 빌드에 HTTP 허용 설정도 적용해야 합니다.** [Android 로컬 연결 안내와 복사 가능한 설정 예시](docs/ANDROID_LOCAL.md)에 실행·확인·페어링 순서를 정리했습니다.
+
 ## 관리자 웹 없이 차량 연결
 
 1. `/docs`에서 `POST /api/auth/companies`로 기업/대표 계정을 만들거나 `POST /api/auth/login`으로 로그인합니다.
@@ -55,6 +64,7 @@ docker compose stop    # 데이터 볼륨을 보존한 채 DB 중지
 ## 문서
 
 - [API와 차량 동기화 계약](docs/API.md)
+- [Android 에뮬레이터 연결·HTTP 설정](docs/ANDROID_LOCAL.md)
 - [확정 범위와 Docs 대응](docs/SCOPE.md)
 - [기능 45개 상세 명세 대조 결과](docs/DOCS_REVIEW.md)
 - [구조·데이터·상태 전이](docs/ARCHITECTURE.md)
@@ -63,7 +73,7 @@ docker compose stop    # 데이터 볼륨을 보존한 채 DB 중지
 
 ## 적용 범위
 
-배포 환경 구성은 포함하지 않습니다. 기본 바인딩은 `127.0.0.1`입니다. 에뮬레이터나 다른 기기에서 연결할 때만 `SERVER_ADDRESS`와 CORS를 환경에 맞춰 설정합니다.
+배포 환경 구성은 포함하지 않습니다. 일반 실행의 기본 바인딩은 `127.0.0.1`, `emulator` 프로필은 `0.0.0.0`입니다. 브라우저 관리자 웹의 별도 Origin을 허용할 때만 CORS를 설정하며, 네이티브 Android HTTP 연결에는 CORS 변경이 필요하지 않습니다.
 
 실차 SDK 수집, Android 서비스/알림, 주행 중 UI 제한, 로컬 저장·재전송 큐는 차량 앱의 책임입니다. 이 저장소는 차량 데이터 수신부터 검증했습니다. 실제 차량·에뮬레이터 앱 연결과 관리자 웹 화면은 이 서버 검증에 포함되지 않습니다. 위치·경로 수집, 실제 비용 정산, 알림 자동 발송 등 P2 기능은 포함하지 않습니다. 앱이 보유한 도착 위치는 차량 로컬에만 두고 서버로 보내지 않습니다. 동의 이력과 무관하게 서버 추천은 최근 확인 기록만 사용합니다. [위치정보와 앱 로컬 데이터 계약](docs/API.md#위치정보와-앱-로컬-데이터)을 참고하세요.
 
