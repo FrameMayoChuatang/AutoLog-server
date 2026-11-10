@@ -3,7 +3,7 @@ package io.autolog.auth;
 import static io.autolog.auth.AuthModels.*;
 import static io.autolog.common.JdbcValues.*;
 
-import io.autolog.common.Db;
+import io.autolog.common.JdbcExecutor;
 import java.util.*;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -21,9 +21,9 @@ public class AdminRepository {
               enumeration(r, "role", Role.class),
               r.getBoolean("active"),
               instant(r, "created_at"));
-  private final Db db;
+  private final JdbcExecutor db;
 
-  public AdminRepository(Db db) {
+  public AdminRepository(JdbcExecutor db) {
     this.db = db;
   }
 
@@ -64,7 +64,13 @@ public class AdminRepository {
 
   public List<AdminSummary> list(UUID company) {
     return db.list(
-        "SELECT id,email,name,role,active,(password_hash IS NOT NULL) AS password_configured,created_at FROM admins WHERE company_id=? ORDER BY created_at,id",
+        """
+        SELECT id, email, name, role, active, (password_hash IS NOT NULL) AS password_configured,
+        created_at
+        FROM admins
+        WHERE company_id=?
+        ORDER BY created_at, id
+        """,
         (r, n) ->
             new AdminSummary(
                 uuid(r, "id"),

@@ -3,7 +3,7 @@ package io.autolog.auth;
 import static io.autolog.auth.AuthModels.*;
 import static io.autolog.common.JdbcValues.*;
 
-import io.autolog.common.Db;
+import io.autolog.common.JdbcExecutor;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.jdbc.core.RowMapper;
@@ -15,9 +15,9 @@ public class CredentialRepository {
       (r, n) ->
           new Credential(
               uuid(r, "id"), uuid(r, "company_id"), uuid(r, "admin_id"), uuid(r, "vehicle_id"));
-  private final Db db;
+  private final JdbcExecutor db;
 
-  public CredentialRepository(Db db) {
+  public CredentialRepository(JdbcExecutor db) {
     this.db = db;
   }
 
@@ -44,7 +44,13 @@ public class CredentialRepository {
 
   public boolean lockValid(UUID id) {
     return db.optional(
-            "SELECT id,company_id,admin_id,vehicle_id FROM credentials WHERE id=? AND revoked_at IS NULL AND expires_at>now() FOR UPDATE",
+            """
+        SELECT id, company_id, admin_id, vehicle_id
+        FROM credentials
+        WHERE id=?
+        AND revoked_at IS NULL
+        AND expires_at>now() FOR UPDATE
+        """,
             CREDENTIAL,
             id)
         .isPresent();
@@ -63,7 +69,14 @@ public class CredentialRepository {
 
   public void revokeSetup(UUID company, UUID admin) {
     db.update(
-        "UPDATE credentials SET revoked_at=now() WHERE company_id=? AND admin_id=? AND kind='SETUP' AND revoked_at IS NULL",
+        """
+        UPDATE credentials
+        SET revoked_at=now()
+        WHERE company_id=?
+        AND admin_id=?
+        AND kind='SETUP'
+        AND revoked_at IS NULL
+        """,
         company,
         admin);
   }
@@ -77,7 +90,14 @@ public class CredentialRepository {
 
   public void revokePairing(UUID company, UUID vehicle) {
     db.update(
-        "UPDATE credentials SET revoked_at=now() WHERE company_id=? AND vehicle_id=? AND kind='PAIRING' AND revoked_at IS NULL",
+        """
+        UPDATE credentials
+        SET revoked_at=now()
+        WHERE company_id=?
+        AND vehicle_id=?
+        AND kind='PAIRING'
+        AND revoked_at IS NULL
+        """,
         company,
         vehicle);
   }

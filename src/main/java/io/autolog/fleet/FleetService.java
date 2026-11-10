@@ -28,14 +28,14 @@ public class FleetService {
   }
 
   @Transactional
-  public Vehicle createVehicle(Actor actor, FleetRequests.Vehicle body) {
+  public Vehicle createVehicle(Actor actor, FleetRequests.VehicleRequest body) {
     var id = UUID.randomUUID();
     repository.createVehicle(actor.companyId(), id, body);
     return vehicle(actor, id);
   }
 
   @Transactional
-  public Vehicle updateVehicle(Actor actor, UUID id, FleetRequests.Vehicle body) {
+  public Vehicle updateVehicle(Actor actor, UUID id, FleetRequests.VehicleRequest body) {
     repository.vehicle(actor.companyId(), id, true);
     repository.updateVehicle(actor.companyId(), id, body);
     if (!body.active()) credentials.revokeVehicle(actor.companyId(), id);
@@ -48,7 +48,7 @@ public class FleetService {
   }
 
   @Transactional
-  public Driver createDriver(Actor actor, FleetRequests.Driver body) {
+  public Driver createDriver(Actor actor, FleetRequests.DriverCreateRequest body) {
     var id = UUID.randomUUID();
     repository.createDriver(
         actor.companyId(), id, body, actor.isDevice() ? DriverStatus.PENDING : DriverStatus.ACTIVE);
@@ -56,7 +56,7 @@ public class FleetService {
   }
 
   @Transactional
-  public Driver updateDriver(Actor actor, UUID id, FleetRequests.DriverUpdate body) {
+  public Driver updateDriver(Actor actor, UUID id, FleetRequests.DriverUpdateRequest body) {
     repository.driver(actor.companyId(), id, true);
     repository.updateDriver(actor.companyId(), id, body);
     return repository.driver(actor.companyId(), id, false);
@@ -72,7 +72,7 @@ public class FleetService {
   }
 
   @Transactional
-  public Driver consent(Actor actor, UUID id, FleetRequests.Consent body) {
+  public Driver consent(Actor actor, UUID id, FleetRequests.ConsentRequest body) {
     var driver = repository.driver(actor.companyId(), id, true);
     if (body.granted() && driver.status() == DriverStatus.INACTIVE)
       throw ApiException.conflict("비활성 운전자입니다.");
@@ -89,7 +89,7 @@ public class FleetService {
     return repository.catalog(actor.companyId(), CatalogKind.from(kind), actor.isDevice());
   }
 
-  private CatalogKind validateCatalog(String value, FleetRequests.Catalog body) {
+  private CatalogKind validateCatalog(String value, FleetRequests.CatalogRequest body) {
     var kind = CatalogKind.from(value);
     if (kind == CatalogKind.PURPOSES && (body.address() != null || body.description() != null))
       throw ApiException.bad("목적에는 주소·거래처 설명을 지정할 수 없습니다.");
@@ -97,7 +97,7 @@ public class FleetService {
   }
 
   @Transactional
-  public CatalogItem createCatalog(Actor actor, String kind, FleetRequests.Catalog body) {
+  public CatalogItem createCatalog(Actor actor, String kind, FleetRequests.CatalogRequest body) {
     var selected = validateCatalog(kind, body);
     var id = UUID.randomUUID();
     repository.createCatalog(actor.companyId(), selected, id, body);
@@ -105,7 +105,8 @@ public class FleetService {
   }
 
   @Transactional
-  public CatalogItem updateCatalog(Actor actor, String kind, UUID id, FleetRequests.Catalog body) {
+  public CatalogItem updateCatalog(
+      Actor actor, String kind, UUID id, FleetRequests.CatalogRequest body) {
     var selected = CatalogKind.from(kind);
     repository.catalogItem(actor.companyId(), selected, id, true);
     validateCatalog(kind, body);

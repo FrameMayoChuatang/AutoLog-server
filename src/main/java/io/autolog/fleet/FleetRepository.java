@@ -3,7 +3,7 @@ package io.autolog.fleet;
 import static io.autolog.common.JdbcValues.*;
 import static io.autolog.fleet.FleetModels.*;
 
-import io.autolog.common.Db;
+import io.autolog.common.JdbcExecutor;
 import java.util.*;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -47,9 +47,9 @@ public class FleetRepository {
               r.getString("name"),
               r.getBoolean("active"),
               instant(r, "created_at"));
-  private final Db db;
+  private final JdbcExecutor db;
 
-  public FleetRepository(Db db) {
+  public FleetRepository(JdbcExecutor db) {
     this.db = db;
   }
 
@@ -68,7 +68,7 @@ public class FleetRepository {
         id);
   }
 
-  public void createVehicle(UUID company, UUID id, FleetRequests.Vehicle body) {
+  public void createVehicle(UUID company, UUID id, FleetRequests.VehicleRequest body) {
     db.update(
         "INSERT INTO vehicles(id,company_id,registration_number,model,active) VALUES(?,?,?,?,?)",
         id,
@@ -78,7 +78,7 @@ public class FleetRepository {
         body.active());
   }
 
-  public void updateVehicle(UUID company, UUID id, FleetRequests.Vehicle body) {
+  public void updateVehicle(UUID company, UUID id, FleetRequests.VehicleRequest body) {
     db.update(
         "UPDATE vehicles SET registration_number=?,model=?,active=? WHERE company_id=? AND id=?",
         body.registrationNumber().strip(),
@@ -112,7 +112,8 @@ public class FleetRepository {
         "SELECT * FROM drivers WHERE company_id=? AND id=? FOR SHARE", DRIVER, company, id);
   }
 
-  public void createDriver(UUID company, UUID id, FleetRequests.Driver body, DriverStatus status) {
+  public void createDriver(
+      UUID company, UUID id, FleetRequests.DriverCreateRequest body, DriverStatus status) {
     db.update(
         "INSERT INTO drivers(id,company_id,name,department,status) VALUES(?,?,?,?,?)",
         id,
@@ -122,7 +123,7 @@ public class FleetRepository {
         status.name());
   }
 
-  public void updateDriver(UUID company, UUID id, FleetRequests.DriverUpdate body) {
+  public void updateDriver(UUID company, UUID id, FleetRequests.DriverUpdateRequest body) {
     db.update(
         "UPDATE drivers SET name=?,department=?,status=? WHERE company_id=? AND id=?",
         body.name().strip(),
@@ -136,7 +137,8 @@ public class FleetRepository {
     db.update("UPDATE drivers SET status='ACTIVE' WHERE company_id=? AND id=?", company, id);
   }
 
-  public void updateConsent(UUID company, UUID driver, UUID vehicle, FleetRequests.Consent body) {
+  public void updateConsent(
+      UUID company, UUID driver, UUID vehicle, FleetRequests.ConsentRequest body) {
     db.update(
         "UPDATE drivers SET location_consent=? WHERE company_id=? AND id=?",
         body.granted(),
@@ -202,7 +204,8 @@ public class FleetRepository {
         id);
   }
 
-  public void createCatalog(UUID company, CatalogKind kind, UUID id, FleetRequests.Catalog body) {
+  public void createCatalog(
+      UUID company, CatalogKind kind, UUID id, FleetRequests.CatalogRequest body) {
     if (kind == CatalogKind.CLIENTS)
       db.update(
           "INSERT INTO clients(id,company_id,name,address,description,active) VALUES(?,?,?,?,?,?)",
@@ -221,7 +224,8 @@ public class FleetRepository {
           body.active());
   }
 
-  public void updateCatalog(UUID company, CatalogKind kind, UUID id, FleetRequests.Catalog body) {
+  public void updateCatalog(
+      UUID company, CatalogKind kind, UUID id, FleetRequests.CatalogRequest body) {
     if (kind == CatalogKind.CLIENTS)
       db.update(
           "UPDATE clients SET name=?,address=?,description=?,active=? WHERE company_id=? AND id=?",

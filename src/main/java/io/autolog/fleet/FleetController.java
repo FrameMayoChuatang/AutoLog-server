@@ -27,7 +27,7 @@ public class FleetController {
   @PostMapping("/vehicles")
   @ResponseStatus(HttpStatus.CREATED)
   public Vehicle createVehicle(
-      @AuthenticationPrincipal Actor actor, @Valid @RequestBody FleetRequests.Vehicle body) {
+      @AuthenticationPrincipal Actor actor, @Valid @RequestBody FleetRequests.VehicleRequest body) {
     return service.createVehicle(actor, body);
   }
 
@@ -40,7 +40,7 @@ public class FleetController {
   public Vehicle updateVehicle(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody FleetRequests.Vehicle body) {
+      @Valid @RequestBody FleetRequests.VehicleRequest body) {
     return service.updateVehicle(actor, id, body);
   }
 
@@ -59,7 +59,8 @@ public class FleetController {
   @PostMapping({"/drivers", "/device/drivers"})
   @ResponseStatus(HttpStatus.CREATED)
   public Driver createDriver(
-      @AuthenticationPrincipal Actor actor, @Valid @RequestBody FleetRequests.Driver body) {
+      @AuthenticationPrincipal Actor actor,
+      @Valid @RequestBody FleetRequests.DriverCreateRequest body) {
     return service.createDriver(actor, body);
   }
 
@@ -67,7 +68,7 @@ public class FleetController {
   public Driver updateDriver(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody FleetRequests.DriverUpdate body) {
+      @Valid @RequestBody FleetRequests.DriverUpdateRequest body) {
     return service.updateDriver(actor, id, body);
   }
 
@@ -80,7 +81,7 @@ public class FleetController {
   public Driver consent(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody FleetRequests.Consent body) {
+      @Valid @RequestBody FleetRequests.ConsentRequest body) {
     return service.consent(actor, id, body);
   }
 
@@ -100,7 +101,7 @@ public class FleetController {
   public CatalogItem createCatalog(
       @AuthenticationPrincipal Actor actor,
       @PathVariable String kind,
-      @Valid @RequestBody FleetRequests.Catalog body) {
+      @Valid @RequestBody FleetRequests.CatalogRequest body) {
     return service.createCatalog(actor, kind, body);
   }
 
@@ -109,7 +110,7 @@ public class FleetController {
       @AuthenticationPrincipal Actor actor,
       @PathVariable String kind,
       @PathVariable UUID id,
-      @Valid @RequestBody FleetRequests.Catalog body) {
+      @Valid @RequestBody FleetRequests.CatalogRequest body) {
     return service.updateCatalog(actor, kind, id, body);
   }
 }
