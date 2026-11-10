@@ -78,3 +78,25 @@ stateDiagram-v2
 ## 검증 환경
 
 `autolog`은 개발 DB, `autolog_test`는 통합 테스트 전용입니다. Flyway가 빈 DB부터 스키마를 구성하며 테스트 시작 시 DB 이름을 검사한 후 업무 테이블만 초기화합니다. CI도 PostgreSQL 17 서비스에서 같은 `clean verify`를 실행합니다. DB 테스트는 데이터 초기화 때문에 병렬 클래스 실행을 하지 않습니다. 동시성 검증이 필요한 시나리오만 한 테스트 안에서 병렬 HTTP 요청을 만듭니다.
+
+## 코드 계층과 타입
+
+도메인별 패키지 안에서 역할을 구분합니다.
+
+| 역할 | 코드 | 책임 |
+|---|---|---|
+| HTTP | `*Controller`, `AuthRequests`, `FleetRequests`, `TripRequests` | 경로·인증 주체·입력 검증·응답 상태. SQL과 트랜잭션 로직은 두지 않음 |
+| 인증·차량 업무 | `AuthService`, `FleetService` | 계정 발급, 권한, 활성 상태, 동의, 차량 연결의 트랜잭션 |
+| 운행 쓰기 | `TripSyncService`, `TripReviewService` | 동기화와 확인/수정/승인. 차량 → 운행 잠금 순서와 감사 기록의 원자성 유지 |
+| 운행 규칙 | `TripSyncPolicy`, `TripMeasurements`, `TripGapCalculator` | 관측값 불변성, 거리·시간·품질, 공백 판단. DB나 HTTP 의존성 없음 |
+| 운행 조회 | `TripQueryService`, `TripReadRepository` | 회사·차량 범위 검증과 필터/후보/월간 조회 |
+| 보고서 | `ReportService`, `ReportCalculator`, `ReportWorkbookWriter` | 같은 DB 스냅샷에서 자료 구성 → 집계 → XLSX 렌더링 |
+| 저장소 | `AdminRepository`, `CredentialRepository`, `FleetRepository`, `TripRepository`, `TripAuditRepository`, `ReportRepository` | SQL, 잠금, 명시적인 RowMapper. 공통 실행은 `JdbcExecutor`, JSON 저장은 `JsonCodec` |
+
+일반 업무 데이터와 HTTP 응답은 Java record로 표현합니다. `Trip`은 내부 저장 모델이고 `TripResponse`가 공개 필드를 명시적으로 복사합니다. 인증 응답도 `AdminProfile`을 사용하므로 비밀번호 해시가 노출되지 않습니다. JDBC 열 이름은 Repository의 매퍼 안에서만 해석합니다.
+
+`ReportPeriod`가 월 경계와 KST 기준을 공유합니다. 조회 결과의 `PageResponse`, 통계의 `Statistics`와 `VehicleSummary`, 공백의 `GapReport`도 타입이 정해져 있습니다. 기존 JSON의 평평한 필드 구조는 유지합니다. 요청 DTO에는 `Request` 접미사를 붙여 OpenAPI에서 요청/응답 모델 이름이 충돌하지 않게 합니다.
+
+`SyncPayloadHasher`의 순서 있는 Map은 이전 앱 payload 해시와의 호환을 위한 직렬화 경계에만 남아 있습니다. 서비스에서 문자열 키로 업무 데이터를 꺼내지 않습니다. 과거 감사 스냅샷은 생성 당시 JSON을 그대로 읽기 위해 `JsonNode`로 보존합니다.
+
+`ApiContractTest`는 공개 응답 필드·감사 기록·민감값 제외·OpenAPI를 확인하고, `ArchitectureTest`는 자체 컨트롤러의 서비스 의존성과 서비스의 JDBC 직접 접근 금지를 검사합니다. 실제 상태 전이, 동시성, 회사 격리, 기존 DB 마이그레이션 검증은 통합 테스트에서 계속 수행합니다.
