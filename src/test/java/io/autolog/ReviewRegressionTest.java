@@ -237,4 +237,59 @@ class ReviewRegressionTest extends ApiTestSupport {
         .isTrue();
     assertThat(call("GET", "/api/trips/" + id + "/audit", owner, null, 200).size()).isEqualTo(1);
   }
+
+  @Test
+  void missingReadingCannotMakeThePreviousReadingLookFresh() throws Exception {
+    String id = UUID.randomUUID().toString();
+    var body = syncBody(1, 0, "RUNNING", START, null, 100, null);
+    body.put("lastObservedAt", "2026-10-10T00:10:00Z");
+    body.put("lastOdometerKm", 105);
+    call("PUT", "/api/device/trips/" + id, device, body, 200);
+    body.put("sourceRevision", 2);
+    body.put("baseServerVersion", 1);
+    body.remove("lastOdometerKm");
+    body.put("lastObservedAt", "2026-10-10T00:30:00Z");
+    call("PUT", "/api/device/trips/" + id, device, body, 400);
+    var retained = call("GET", "/api/device/trips/" + id, device, null, 200);
+    assertThat(retained.path("lastObservedAt").asText()).isEqualTo("2026-10-10T00:10:00Z");
+    assertThat(retained.path("lastOdometerKm").asInt()).isEqualTo(105);
+  }
+
+  @Test
+  void driverDraftCannotEditApprovedRecordsOrAnotherVehicle() throws Exception {
+    String id = approved("BUSINESS", START, END, 100, 110);
+    call("PATCH", "/api/device/trips/" + id, device, details(3, "UNCONFIRMED"), 409);
+    call("PATCH", "/api/device/trips/" + id, owner, details(3, "UNCONFIRMED"), 403);
+    String second =
+        call(
+                "POST",
+                "/api/vehicles",
+                owner,
+                Map.of("registrationNumber", "34나5678", "model", "다른 차량", "active", true),
+                201)
+            .path("id")
+            .asText();
+    String pair =
+        call("POST", "/api/vehicles/" + second + "/pairing", owner, null, 200)
+            .path("token")
+            .asText();
+    String anotherDevice =
+        call("POST", "/api/device/pair", null, Map.of("pairingToken", pair), 200)
+            .path("accessToken")
+            .asText();
+    call("PATCH", "/api/device/trips/" + id, anotherDevice, details(3, "UNCONFIRMED"), 404);
+    assertThat(call("GET", "/api/trips/" + id, owner, null, 200).path("reportEligible").asBoolean())
+        .isTrue();
+  }
+
+  @Test
+  void nestedEarlierTripCannotInflateGapAfterAllOverlappingTripsEnd() throws Exception {
+    completed(UUID.randomUUID().toString(), START, "2026-10-10T04:00:00Z", 100, 200);
+    completed(UUID.randomUUID().toString(), END, "2026-10-10T01:30:00Z", 120, 130);
+    completed(
+        UUID.randomUUID().toString(), "2026-10-10T05:00:00Z", "2026-10-10T06:00:00Z", 210, 220);
+    var gaps = call("GET", "/api/trips/gaps?month=2026-10", owner, null, 200);
+    assertThat(gaps.path("knownGapKm").decimalValue()).isEqualByComparingTo("0");
+    assertThat(gaps.path("items").get(2).path("issue").asText()).isEqualTo("OVERLAPPING_TRIPS");
+  }
 }

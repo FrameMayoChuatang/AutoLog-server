@@ -160,8 +160,9 @@ public class TripQueryService {
       else if (!"COMPLETED".equals(text(row, "previousState"))) issue = "INCOMPLETE_PREVIOUS_TRIP";
       else if (row.get("previousEnd") == null
           || (row.get("precedingEnd") != null
-              && ((Instant) row.get("precedingEnd")).isAfter((Instant) row.get("startedAt"))))
-        issue = "OVERLAPPING_TRIPS";
+              && (((Instant) row.get("precedingEnd")).isAfter((Instant) row.get("startedAt"))
+                  || ((Instant) row.get("precedingEnd"))
+                      .isAfter((Instant) row.get("previousEnd"))))) issue = "OVERLAPPING_TRIPS";
       else if (start == null || previous == null || start.signum() == 0)
         issue = "MISSING_OR_ZERO_ODOMETER";
       else if ((row.get("previousCollectionIssues") instanceof List<?> reported

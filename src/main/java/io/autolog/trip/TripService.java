@@ -185,6 +185,11 @@ public class TripService {
         throw ApiException.conflict("완료된 운행을 진행 중 상태로 되돌릴 수 없습니다.");
       Instant previousObserved = (Instant) before.get("lastObservedAt");
       BigDecimal previousLast = decimal(before, "lastOdometerKm");
+      if (previousLast != null
+          && body.lastOdometerKm() == null
+          && body.lastObservedAt() != null
+          && !body.lastObservedAt().equals(previousObserved))
+        throw ApiException.bad("저장된 관측값의 시각만 변경할 수 없습니다. 누적거리와 관측 시각을 함께 전송하세요.");
       if (previousObserved != null
           && body.lastObservedAt() != null
           && body.lastObservedAt().isBefore(previousObserved))
