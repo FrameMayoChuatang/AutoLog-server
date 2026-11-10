@@ -23,7 +23,8 @@ public class SecurityConfig {
   }
 
   @Bean
-  SecurityFilterChain security(HttpSecurity http, Db db, ObjectMapper json) throws Exception {
+  SecurityFilterChain security(
+      HttpSecurity http, CredentialRepository credentials, ObjectMapper json) throws Exception {
     return http.csrf(c -> c.disable())
         .cors(c -> {})
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -79,7 +80,8 @@ public class SecurityConfig {
                               res.getOutputStream(),
                               ApiErrorHandler.body("FORBIDDEN", "접근 권한이 없습니다."));
                         }))
-        .addFilterBefore(new BearerFilter(db, json), UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(
+            new BearerFilter(credentials, json), UsernamePasswordAuthenticationFilter.class)
         .build();
   }
 

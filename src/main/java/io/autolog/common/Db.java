@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.*;
 import org.postgresql.util.PGobject;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,6 +19,18 @@ public class Db {
   public Db(JdbcTemplate jdbc, ObjectMapper json) {
     this.jdbc = jdbc;
     this.json = json;
+  }
+
+  public <T> List<T> list(String sql, RowMapper<T> mapper, Object... args) {
+    return jdbc.query(sql, mapper, parameters(args));
+  }
+
+  public <T> Optional<T> optional(String sql, RowMapper<T> mapper, Object... args) {
+    return list(sql, mapper, args).stream().findFirst();
+  }
+
+  public <T> T one(String sql, RowMapper<T> mapper, Object... args) {
+    return optional(sql, mapper, args).orElseThrow(ApiException::missing);
   }
 
   public List<Map<String, Object>> list(String sql, Object... args) {
