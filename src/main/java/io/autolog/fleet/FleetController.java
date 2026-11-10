@@ -43,6 +43,7 @@ public class FleetController {
   public record Catalog(
       @NotBlank @Size(max = 120) String name,
       @Size(max = 300) String address,
+      @Size(max = 500) String description,
       @NotNull Boolean active) {}
 
   public record Consent(@NotNull Boolean granted, @NotBlank @Size(max = 80) String noticeVersion) {}
@@ -238,14 +239,16 @@ public class FleetController {
     UUID id = UUID.randomUUID();
     if (table.equals("clients"))
       db.update(
-          "INSERT INTO clients(id,company_id,name,address,active) VALUES(?,?,?,?,?)",
+          "INSERT INTO clients(id,company_id,name,address,description,active) VALUES(?,?,?,?,?,?)",
           id,
           actor.companyId(),
           body.name().strip(),
           body.address(),
+          body.description(),
           body.active());
     else {
-      if (body.address() != null) throw ApiException.bad("목적에는 주소를 지정할 수 없습니다.");
+      if (body.address() != null || body.description() != null)
+        throw ApiException.bad("목적에는 주소·거래처 설명을 지정할 수 없습니다.");
       db.update(
           "INSERT INTO purposes(id,company_id,name,active) VALUES(?,?,?,?)",
           id,
@@ -270,14 +273,16 @@ public class FleetController {
         id);
     if (table.equals("clients"))
       db.update(
-          "UPDATE clients SET name=?,address=?,active=? WHERE company_id=? AND id=?",
+          "UPDATE clients SET name=?,address=?,description=?,active=? WHERE company_id=? AND id=?",
           body.name().strip(),
           body.address(),
+          body.description(),
           body.active(),
           actor.companyId(),
           id);
     else {
-      if (body.address() != null) throw ApiException.bad("목적에는 주소를 지정할 수 없습니다.");
+      if (body.address() != null || body.description() != null)
+        throw ApiException.bad("목적에는 주소·거래처 설명을 지정할 수 없습니다.");
       db.update(
           "UPDATE purposes SET name=?,active=? WHERE company_id=? AND id=?",
           body.name().strip(),

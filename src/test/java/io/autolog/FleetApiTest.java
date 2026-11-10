@@ -98,4 +98,26 @@ class FleetApiTest extends ApiTestSupport {
     assertThat(call("GET", "/api/drivers", other, null, 200)).isEmpty();
     call("GET", "/api/drivers/" + driver + "/consents", other, null, 404);
   }
+
+  @Test
+  void clientDescriptionIsStoredUpdatedAndExcludedFromPurposeCatalog() throws Exception {
+    var body = new java.util.LinkedHashMap<String, Object>();
+    body.put("name", "설명 거래처");
+    body.put("address", "서울");
+    body.put("description", "월간 방문 담당 고객");
+    body.put("active", true);
+    var created = call("POST", "/api/catalog/clients", owner, body, 201);
+    assertThat(created.path("description").asText()).isEqualTo("월간 방문 담당 고객");
+    body.put("description", "담당자 변경");
+    body.put("active", false);
+    var updated =
+        call("PATCH", "/api/catalog/clients/" + created.path("id").asText(), owner, body, 200);
+    assertThat(updated.path("description").asText()).isEqualTo("담당자 변경");
+    assertThat(call("GET", "/api/device/catalog/clients", device, null, 200).size()).isEqualTo(1);
+    body.put("description", "x".repeat(501));
+    call("POST", "/api/catalog/clients", owner, body, 400);
+    body.put("description", "목적에는 거래처 설명 없음");
+    body.remove("address");
+    call("POST", "/api/catalog/purposes", owner, body, 400);
+  }
 }

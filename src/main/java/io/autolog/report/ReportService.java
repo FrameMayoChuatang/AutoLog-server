@@ -5,6 +5,7 @@ import static io.autolog.common.Db.*;
 import io.autolog.auth.Actor;
 import io.autolog.common.*;
 import io.autolog.trip.TripQueryService;
+import io.autolog.trip.TripService;
 import java.io.*;
 import java.math.*;
 import java.time.*;
@@ -18,7 +19,7 @@ import org.springframework.transaction.annotation.*;
 
 @Service
 public class ReportService {
-  public static final String TEMPLATE_VERSION = "autolog-nts-2025-8-v1";
+  public static final String TEMPLATE_VERSION = "autolog-nts-2025-8-v2";
   public static final String NTS_SOURCE =
       "https://www.nts.go.kr/nts/na/ntt/selectNttInfo.do?mi=2205&nttSn=1341754";
   private final Db db;
@@ -68,6 +69,7 @@ public class ReportService {
     result.put("approvedBusinessKm", business);
     result.put("approvedPersonalKm", sum(category(approved, "PERSONAL"), "distanceKm"));
     result.put("unreviewedKnownKm", sum(rows, "distanceKm").subtract(approvedKm));
+    result.putAll(reviewDistances(rows));
     result.put(
         "incompleteObservedKm",
         sum(
@@ -92,36 +94,126 @@ public class ReportService {
         "changesRequestedCount",
         rows.stream().filter(r -> "CHANGES_REQUESTED".equals(text(r, "approvalStatus"))).count());
     result.put("gaps", query.gaps(actor, month, vehicleId));
-    List<Map<String, Object>> byVehicle = new ArrayList<>();
-    rows.stream()
-        .map(r -> uuid(r, "vehicleId"))
-        .distinct()
-        .forEach(
-            id -> {
-              var subset = rows.stream().filter(r -> id.equals(uuid(r, "vehicleId"))).toList();
-              var selected = approved(subset);
-              byVehicle.add(
-                  Map.of(
-                      "vehicleId",
-                      id,
-                      "registrationNumber",
-                      text(subset.getFirst(), "registrationNumber"),
-                      "tripCount",
-                      subset.size(),
-                      "approvedCount",
-                      selected.size(),
-                      "approvedKm",
-                      sum(selected, "distanceKm"),
-                      "unreviewedKnownKm",
-                      sum(subset, "distanceKm").subtract(sum(selected, "distanceKm"))));
-            });
-    result.put("vehicles", byVehicle);
+    result.put("vehicles", vehicleSummaries(actor, month, vehicleId, rows));
+    return result;
+  }
+
+  private static Map<String, Object> reviewDistances(List<Map<String, Object>> rows) {
+    return Map.of(
+        "unconfirmedKnownKm",
+            sum(
+                rows.stream().filter(r -> r.get("driverConfirmedAt") == null).toList(),
+                "distanceKm"),
+        "pendingApprovalKm",
+            sum(
+                rows.stream().filter(r -> "PENDING".equals(text(r, "approvalStatus"))).toList(),
+                "distanceKm"),
+        "changesRequestedKm",
+            sum(
+                rows.stream()
+                    .filter(r -> "CHANGES_REQUESTED".equals(text(r, "approvalStatus")))
+                    .toList(),
+                "distanceKm"));
+  }
+
+  private Map<String, Object> boundary(Actor actor, UUID vehicleId, Instant boundary) {
+    var latest =
+        db.optional(
+            "SELECT * FROM trips WHERE company_id=? AND vehicle_id=? AND approval_status='APPROVED' AND ended_at<=? ORDER BY ended_at DESC,id DESC LIMIT 1",
+            actor.companyId(),
+            vehicleId,
+            boundary);
+    var result = new LinkedHashMap<String, Object>();
+    result.put("boundaryAt", boundary);
+    result.put("odometerKm", null);
+    result.put("observedAt", null);
+    result.put("tripId", null);
+    result.put("status", "MISSING");
+    latest.ifPresent(
+        raw -> {
+          var trip = TripService.decorate(raw);
+          result.put("observedAt", trip.get("endedAt"));
+          result.put("tripId", trip.get("id"));
+          if (Boolean.TRUE.equals(trip.get("reportEligible"))) {
+            result.put("odometerKm", trip.get("endOdometerKm"));
+            result.put(
+                "status",
+                boundary.equals(trip.get("endedAt"))
+                    ? "AT_BOUNDARY"
+                    : "LAST_KNOWN_REQUIRES_REVIEW");
+          } else result.put("status", "INVALID_REQUIRES_REVIEW");
+        });
+    return result;
+  }
+
+  private List<Map<String, Object>> vehicleSummaries(
+      Actor actor, String month, UUID vehicleId, List<Map<String, Object>> rows) {
+    var period = TripQueryService.month(month);
+    var vehicles =
+        vehicleId == null
+            ? db.list(
+                "SELECT * FROM vehicles WHERE company_id=? ORDER BY registration_number,id",
+                actor.companyId())
+            : List.of(
+                db.one(
+                    "SELECT * FROM vehicles WHERE company_id=? AND id=?",
+                    actor.companyId(),
+                    vehicleId));
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (var vehicle : vehicles) {
+      UUID id = uuid(vehicle, "id");
+      var subset = rows.stream().filter(r -> id.equals(uuid(r, "vehicleId"))).toList();
+      var selected = approved(subset);
+      var summary = new LinkedHashMap<String, Object>();
+      summary.put("vehicleId", id);
+      summary.put("registrationNumber", vehicle.get("registrationNumber"));
+      summary.put("model", vehicle.get("model"));
+      summary.put("tripCount", subset.size());
+      summary.put("approvedCount", selected.size());
+      summary.put(
+          "approvedDrivingDays",
+          selected.stream()
+              .map(
+                  r ->
+                      ((Instant) r.get("startedAt"))
+                          .atZone(TripQueryService.REPORT_ZONE)
+                          .toLocalDate())
+              .distinct()
+              .count());
+      summary.put("approvedDurationSeconds", sum(selected, "durationSeconds"));
+      summary.put("approvedKm", sum(selected, "distanceKm"));
+      summary.put("approvedCommuteKm", sum(category(selected, "COMMUTE"), "distanceKm"));
+      summary.put("approvedBusinessKm", sum(category(selected, "BUSINESS"), "distanceKm"));
+      summary.put("approvedPersonalKm", sum(category(selected, "PERSONAL"), "distanceKm"));
+      summary.put(
+          "unreviewedKnownKm", sum(subset, "distanceKm").subtract(sum(selected, "distanceKm")));
+      summary.putAll(reviewDistances(subset));
+      var previous = boundary(actor, id, period.from());
+      var current = boundary(actor, id, period.to());
+      summary.put("previousMonthEnd", previous);
+      summary.put("currentMonthEnd", current);
+      List<String> notes = new ArrayList<>();
+      if (!"AT_BOUNDARY".equals(previous.get("status")))
+        notes.add("전월 말 계기판 확인 필요 (" + previous.get("status") + ")");
+      if (!"AT_BOUNDARY".equals(current.get("status")))
+        notes.add("당월 말 계기판 확인 필요 (" + current.get("status") + ")");
+      if (decimal(previous, "odometerKm") != null
+          && decimal(current, "odometerKm") != null
+          && decimal(current, "odometerKm").compareTo(decimal(previous, "odometerKm")) < 0)
+        notes.add("월말 기준 누적거리 역전 확인 필요");
+      if (subset.isEmpty()) notes.add("해당 월 수신 운행 없음 — 미운행을 보장하지 않음");
+      if (subset.size() != selected.size())
+        notes.add("미승인·미확인·미완료 또는 측정 오류 기록 제외: " + (subset.size() - selected.size()) + "건");
+      notes.add("기록 간 공백 시트/API와 비교 필요; 월말 기준값 차이를 업무거리로 자동 분류하지 않음");
+      summary.put("reviewNotes", notes);
+      result.add(summary);
+    }
     return result;
   }
 
   @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public byte[] workbook(Actor actor, String month, UUID vehicleId, boolean nts) {
-    var rows = query.monthly(actor, month, vehicleId);
+    var rows = query.monthly(actor, month, vehicleId, 50001);
     var selected = approved(rows);
     if (rows.size() > 50000) throw ApiException.bad("엑셀은 한 번에 50,000건까지 출력할 수 있습니다. 차량을 선택해 주세요.");
     var gapResult = query.gaps(actor, month, vehicleId);
@@ -142,7 +234,7 @@ public class ReportService {
           "확인된 기록 간 공백 (km)",
           gapResult.get("knownGapKm"),
           "업무거리로 자동 분류하지 않음");
-      write(info, 6, styles.normal, "양식 버전", nts ? TEMPLATE_VERSION : "autolog-monthly-v1");
+      write(info, 6, styles.normal, "양식 버전", nts ? TEMPLATE_VERSION : "autolog-monthly-v2");
       write(info, 7, styles.normal, "생성 시각 (UTC)", Instant.now().toString());
       write(info, 8, styles.normal, "거리 단위", "km; 원본 계기판 값을 보존하며 표시 소수점은 3자리");
       if (nts) {
@@ -153,7 +245,7 @@ public class ReportService {
             12,
             styles.normal,
             "사용자 확인",
-            "공식 서식의 사용자는 운전자와 다를 수 있으므로 사용자 부서·성명은 비워 둠. 참고 운전자를 보고 확인 후 작성.");
+            "사용자 부서·성명은 확정 운전자 정보로 미리 채운 초안. 실제 사용자가 다르면 제출 전 확인하여 수정.");
         write(
             info,
             13,
@@ -240,6 +332,7 @@ public class ReportService {
         write(summary, 3, styles.normal, "개인", sum(category(selected, "PERSONAL"), "distanceKm"));
         write(summary, 4, styles.header, "승인 기록 합계", sum(selected, "distanceKm"));
       }
+      vehicleSummarySheet(workbook, styles, vehicleSummaries(actor, month, vehicleId, rows));
       reviewSheets(workbook, styles, rows, gapResult);
       for (Sheet sheet : workbook) {
         sheet.setDefaultColumnWidth(20);
@@ -280,7 +373,7 @@ public class ReportService {
         vehicle.get("registrationNumber"),
         "추출 월",
         month);
-    write(sheet, 3, styles.normal, "④ 사용자는 직접 확인하여 작성. ⑪~⑬은 사업연도 전체 자료 확인 후 작성.");
+    write(sheet, 3, styles.normal, "④는 운전자 정보로 미리 채움. 실제 사용자 확인 필수. ⑪~⑬은 사업연도 전체 자료 확인 후 작성.");
     sheet.addMergedRegion(new CellRangeAddress(3, 3, 0, 12));
     write(
         sheet,
@@ -309,8 +402,8 @@ public class ReportService {
           DateTimeFormatter.ofPattern("yyyy-MM-dd (E)", Locale.KOREAN)
               .withZone(TripQueryService.REPORT_ZONE)
               .format((Instant) trip.get("startedAt")),
-          null,
-          null,
+          trip.get("driverDepartment"),
+          trip.get("driverName"),
           trip.get("startOdometerKm"),
           trip.get("endOdometerKm"),
           trip.get("distanceKm"),
@@ -351,6 +444,61 @@ public class ReportService {
     filter(sheet, 4, Math.max(4, index - 2), 13);
     sheet.createFreezePane(0, 5);
     sheet.setRepeatingRows(new CellRangeAddress(0, 4, -1, -1));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void vehicleSummarySheet(
+      Workbook book, Styles styles, List<Map<String, Object>> summaries) {
+    var sheet = book.createSheet("차량별 월간 집계");
+    write(
+        sheet,
+        0,
+        styles.header,
+        "차량번호",
+        "차종",
+        "승인 운행일수 (시작일 기준)",
+        "승인 거리 (km)",
+        "출퇴근 (km)",
+        "일반 업무 (km)",
+        "개인 (km)",
+        "미확인 정상 종료 거리 (km)",
+        "승인 대기 거리 (km)",
+        "전월 말 기준 계기판 후보 (km)",
+        "관측 시각 (KST)",
+        "전월 말 확인 상태",
+        "당월 말 기준 계기판 후보 (km)",
+        "관측 시각 (KST)",
+        "당월 말 확인 상태",
+        "보고사항",
+        "승인 운행 시간 (초)");
+    int index = 1;
+    for (var row : summaries) {
+      var previous = (Map<String, Object>) row.get("previousMonthEnd");
+      var current = (Map<String, Object>) row.get("currentMonthEnd");
+      write(
+          sheet,
+          index++,
+          styles.normal,
+          row.get("registrationNumber"),
+          row.get("model"),
+          row.get("approvedDrivingDays"),
+          row.get("approvedKm"),
+          row.get("approvedCommuteKm"),
+          row.get("approvedBusinessKm"),
+          row.get("approvedPersonalKm"),
+          row.get("unconfirmedKnownKm"),
+          row.get("pendingApprovalKm"),
+          previous.get("odometerKm"),
+          time(previous.get("observedAt")),
+          previous.get("status"),
+          current.get("odometerKm"),
+          time(current.get("observedAt")),
+          current.get("status"),
+          String.join("; ", (List<String>) row.get("reviewNotes")),
+          row.get("approvedDurationSeconds"));
+    }
+    filter(sheet, 0, Math.max(0, index - 1), 17);
+    sheet.createFreezePane(0, 1);
   }
 
   @SuppressWarnings("unchecked")
