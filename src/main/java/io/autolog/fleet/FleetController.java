@@ -179,7 +179,8 @@ public class FleetController {
     var driver =
         db.one(
             "SELECT * FROM drivers WHERE company_id=? AND id=? FOR UPDATE", actor.companyId(), id);
-    if ("INACTIVE".equals(text(driver, "status"))) throw ApiException.conflict("비활성 운전자입니다.");
+    if (body.granted() && "INACTIVE".equals(text(driver, "status")))
+      throw ApiException.conflict("비활성 운전자입니다.");
     db.update(
         "UPDATE drivers SET location_consent=? WHERE company_id=? AND id=?",
         body.granted(),

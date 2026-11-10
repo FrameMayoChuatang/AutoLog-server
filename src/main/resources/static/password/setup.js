@@ -13,7 +13,8 @@ form.addEventListener('submit', async event => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || '설정에 실패했습니다.');
     // This page does not persist credentials. The user signs in through the admin client.
-    await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${body.accessToken}` } });
+    // Password setup already succeeded; a logout network failure must not offer a consumed link again.
+    await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${body.accessToken}` } }).catch(() => {});
     form.reset(); form.hidden = true; result.textContent = '비밀번호를 설정했습니다. 관리자 화면에서 이메일과 비밀번호로 로그인해 주세요.';
   } catch (error) { result.textContent = error.message; button.disabled = false; }
 });

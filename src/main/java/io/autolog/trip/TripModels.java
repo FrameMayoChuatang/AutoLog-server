@@ -3,6 +3,7 @@ package io.autolog.trip;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 public final class TripModels {
@@ -28,6 +29,17 @@ public final class TripModels {
     CHANGES_REQUESTED
   }
 
+  public enum MeasurementSource {
+    PLEOS_ODOMETER,
+    UNKNOWN
+  }
+
+  public enum CollectionIssue {
+    DATA_UNAVAILABLE,
+    ODOMETER_DISCONTINUITY,
+    SAMPLING_INTERRUPTED
+  }
+
   public record Sync(
       @Positive long sourceRevision,
       @PositiveOrZero long baseServerVersion,
@@ -38,7 +50,9 @@ public final class TripModels {
       @DecimalMin("0") @Digits(integer = 11, fraction = 3) BigDecimal startOdometerKm,
       @DecimalMin("0") @Digits(integer = 11, fraction = 3) BigDecimal endOdometerKm,
       @DecimalMin("0") @Digits(integer = 11, fraction = 3) BigDecimal lastOdometerKm,
-      @NotNull State state) {}
+      @NotNull State state,
+      MeasurementSource measurementSource,
+      @Size(max = 3) Set<@NotNull CollectionIssue> collectionIssues) {}
 
   public record Details(
       @Positive long expectedVersion,
