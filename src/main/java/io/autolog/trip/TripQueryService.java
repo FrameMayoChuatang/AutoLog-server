@@ -122,7 +122,7 @@ public class TripQueryService {
     vehicle(actor, vehicleId);
     Period period = month(month);
     String sql =
-        "WITH ordered AS (SELECT id,vehicle_id,started_at,start_odometer_km,lag(id) OVER w AS previous_id,lag(ended_at) OVER w AS previous_end,lag(end_odometer_km) OVER w AS previous_odometer,lag(state) OVER w AS previous_state FROM trips WHERE company_id=?";
+        "WITH ordered AS (SELECT id,vehicle_id,started_at,start_odometer_km,lag(id) OVER w AS previous_id,lag(ended_at) OVER w AS previous_end,lag(end_odometer_km) OVER w AS previous_odometer,lag(state) OVER w AS previous_state,lag(start_odometer_km) OVER w AS previous_start_odometer,lag(started_at) OVER w AS previous_started_at FROM trips WHERE company_id=?";
     List<Object> args = new ArrayList<>();
     args.add(actor.companyId());
     if (vehicleId != null) {
@@ -140,7 +140,8 @@ public class TripQueryService {
       String issue = null;
       BigDecimal distance = null,
           start = decimal(row, "startOdometerKm"),
-          previous = decimal(row, "previousOdometer");
+          previous = decimal(row, "previousOdometer"),
+          previousStart = decimal(row, "previousStartOdometer");
       if (row.get("previousId") == null) issue = "NO_PREVIOUS_RECORDED_TRIP";
       else if (!"COMPLETED".equals(text(row, "previousState"))) issue = "INCOMPLETE_PREVIOUS_TRIP";
       else if (row.get("previousEnd") == null
@@ -148,6 +149,12 @@ public class TripQueryService {
         issue = "OVERLAPPING_TRIPS";
       else if (start == null || previous == null || start.signum() == 0)
         issue = "MISSING_OR_ZERO_ODOMETER";
+      else if (previousStart == null
+          || previousStart.signum() == 0
+          || previous.compareTo(previousStart) < 0
+          || (previous.compareTo(previousStart) > 0
+              && Objects.equals(row.get("previousStartedAt"), row.get("previousEnd"))))
+        issue = "INVALID_PREVIOUS_MEASUREMENT";
       else if (start.compareTo(previous) < 0) issue = "ODOMETER_REGRESSION";
       else if (start.compareTo(previous) > 0) {
         issue = "GAP_DETECTED";

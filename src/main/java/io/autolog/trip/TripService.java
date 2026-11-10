@@ -130,6 +130,7 @@ public class TripService {
       if (!body.startedAt().equals(before.get("startedAt")))
         throw ApiException.conflict("운행 시작 시각은 변경할 수 없습니다.");
       if (decimal(before, "startOdometerKm") != null
+          && decimal(before, "startOdometerKm").signum() > 0
           && (body.startOdometerKm() == null
               || decimal(before, "startOdometerKm").compareTo(body.startOdometerKm()) != 0))
         throw ApiException.conflict("이미 저장한 시작 계기판 값은 변경할 수 없습니다.");

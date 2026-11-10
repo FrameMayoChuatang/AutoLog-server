@@ -7,6 +7,39 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
 
 class TripApiTest extends ApiTestSupport {
+  @Test
+  void invalidPreviousMeasurementDoesNotInventGapDistance() throws Exception {
+    completed(
+        UUID.randomUUID().toString(), "2026-10-09T00:00:00Z", "2026-10-09T01:00:00Z", 100, 90);
+    completed(UUID.randomUUID().toString(), START, END, 105, 110);
+    var gaps = call("GET", "/api/trips/gaps?month=2026-10", owner, null, 200);
+    assertThat(gaps.path("knownGapKm").decimalValue()).isEqualByComparingTo("0");
+    assertThat(gaps.path("items").get(1).path("issue").asText())
+        .isEqualTo("INVALID_PREVIOUS_MEASUREMENT");
+  }
+
+  @Test
+  void bootZeroCanRecoverBeforeConfirmationButValidStartIsImmutable() throws Exception {
+    String id = UUID.randomUUID().toString();
+    completed(id, START, END, 0, 110);
+    var recovered =
+        call(
+            "PUT",
+            "/api/device/trips/" + id,
+            device,
+            syncBody(2, 1, "COMPLETED", START, END, 100, 110),
+            200);
+    assertThat(recovered.path("distanceKm").decimalValue()).isEqualByComparingTo("10");
+    call(
+        "PUT",
+        "/api/device/trips/" + id,
+        device,
+        syncBody(3, 2, "COMPLETED", START, END, 105, 110),
+        409);
+    var audit = call("GET", "/api/trips/" + id + "/audit", owner, null, 200);
+    assertThat(audit.get(1).path("beforeValue").path("startOdometerKm").asInt()).isZero();
+  }
+
   private static final String START = "2026-10-10T00:00:00Z", END = "2026-10-10T01:00:00Z";
 
   @Test
