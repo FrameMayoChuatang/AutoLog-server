@@ -24,7 +24,7 @@
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><executions><execution><id>java-version</id><goals><goal>enforce</goal></goals><configuration><rules><requireJavaVersion><version>[21,22)</version></requireJavaVersion></rules></configuration></execution></executions></plugin>
     <plugin>
       <groupId>com.diffplug.spotless</groupId><artifactId>spotless-maven-plugin</artifactId><version>3.11.0</version>
-      <configuration><java><googleJavaFormat><version>1.24.0</version></googleJavaFormat></java></configuration>
+      <configuration><java><googleJavaFormat><version>1.24.0</version></googleJavaFormat><removeUnusedImports/></java></configuration>
       <executions><execution><id>format-check</id><phase>verify</phase><goals><goal>check</goal></goals></execution></executions>
     </plugin>
   </plugins></build>

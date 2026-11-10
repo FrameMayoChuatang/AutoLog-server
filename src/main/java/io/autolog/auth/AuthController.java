@@ -1,5 +1,8 @@
 package io.autolog.auth;
 
+import static io.autolog.auth.AuthModels.*;
+import static io.autolog.auth.AuthRequests.*;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.*;
@@ -16,44 +19,24 @@ public class AuthController {
     this.service = service;
   }
 
-  public record Signup(
-      @NotBlank @Size(max = 120) String companyName,
-      @NotBlank @Size(max = 80) String ownerName,
-      @NotBlank @Email @Size(max = 254) String email,
-      @NotBlank @Size(min = 10, max = 72) String password) {}
-
-  public record Login(
-      @NotBlank @Email @Size(max = 254) String email, @NotBlank @Size(max = 72) String password) {}
-
-  public record Setup(
-      @NotBlank @Size(max = 128) String token,
-      @NotBlank @Size(min = 10, max = 72) String password) {}
-
-  public record Staff(
-      @NotBlank @Email @Size(max = 254) String email, @NotBlank @Size(max = 80) String name) {}
-
-  public record Active(@NotNull Boolean active) {}
-
-  public record Pair(@NotBlank @Size(max = 128) String pairingToken) {}
-
   @PostMapping("/auth/companies")
   @ResponseStatus(HttpStatus.CREATED)
-  public AuthService.Session signup(@Valid @RequestBody Signup body) {
+  public Session signup(@Valid @RequestBody SignupRequest body) {
     return service.signup(body.companyName(), body.ownerName(), body.email(), body.password());
   }
 
   @PostMapping("/auth/login")
-  public AuthService.Session login(@Valid @RequestBody Login body) {
+  public Session login(@Valid @RequestBody LoginRequest body) {
     return service.login(body.email(), body.password());
   }
 
   @PostMapping("/auth/password/setup")
-  public AuthService.Session setup(@Valid @RequestBody Setup body) {
+  public Session setup(@Valid @RequestBody PasswordSetupRequest body) {
     return service.finishSetup(body.token(), body.password());
   }
 
   @GetMapping("/auth/me")
-  public Map<String, Object> me(@AuthenticationPrincipal Actor actor) {
+  public CurrentUser me(@AuthenticationPrincipal Actor actor) {
     return service.me(actor);
   }
 
@@ -64,39 +47,37 @@ public class AuthController {
   }
 
   @GetMapping("/admins")
-  public List<Map<String, Object>> admins(@AuthenticationPrincipal Actor actor) {
+  public List<AdminSummary> admins(@AuthenticationPrincipal Actor actor) {
     return service.admins(actor);
   }
 
   @PostMapping("/admins")
   @ResponseStatus(HttpStatus.CREATED)
-  public Map<String, Object> createStaff(
-      @AuthenticationPrincipal Actor actor, @Valid @RequestBody Staff body) {
+  public StaffInvitation createStaff(
+      @AuthenticationPrincipal Actor actor, @Valid @RequestBody StaffCreateRequest body) {
     return service.createStaff(actor, body.email(), body.name());
   }
 
   @PostMapping("/admins/{id}/setup-link")
-  public AuthService.SetupLink setupLink(
-      @AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
+  public SetupLink setupLink(@AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
     return service.reissueSetup(actor, id);
   }
 
   @PatchMapping("/admins/{id}/active")
-  public Map<String, Object> active(
+  public AdminProfile active(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Active body) {
+      @Valid @RequestBody ActiveStatusRequest body) {
     return service.setStaffActive(actor, id, body.active());
   }
 
   @PostMapping("/vehicles/{id}/pairing")
-  public AuthService.IssuedToken pairing(
-      @AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
+  public IssuedToken pairing(@AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
     return service.pairingCode(actor, id);
   }
 
   @PostMapping("/device/pair")
-  public Map<String, Object> pair(@Valid @RequestBody Pair body) {
+  public DeviceSession pair(@Valid @RequestBody PairingRequest body) {
     return service.pair(body.pairingToken());
   }
 }

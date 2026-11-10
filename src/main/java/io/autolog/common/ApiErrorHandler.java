@@ -2,7 +2,6 @@ package io.autolog.common;
 
 import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
-import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -36,7 +35,9 @@ public class ApiErrorHandler {
     return ResponseEntity.status(409).body(body("DATA_CONFLICT", "중복되거나 연결할 수 없는 데이터입니다."));
   }
 
-  public static Map<String, Object> body(String code, String message) {
-    return Map.of("code", code, "message", message, "timestamp", Instant.now().toString());
+  public record ErrorBody(String code, String message, Instant timestamp) {}
+
+  public static ErrorBody body(String code, String message) {
+    return new ErrorBody(code, message, Instant.now());
   }
 }

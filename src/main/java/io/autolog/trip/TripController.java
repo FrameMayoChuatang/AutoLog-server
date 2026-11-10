@@ -1,8 +1,11 @@
 package io.autolog.trip;
 
 import static io.autolog.trip.TripModels.*;
+import static io.autolog.trip.TripQueryModels.*;
+import static io.autolog.trip.TripRequests.*;
 
 import io.autolog.auth.Actor;
+import io.autolog.common.PageResponse;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.*;
@@ -12,73 +15,77 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api")
 public class TripController {
-  private final TripService service;
+  private final TripSyncService sync;
+  private final TripReviewService review;
   private final TripQueryService query;
 
-  public TripController(TripService service, TripQueryService query) {
-    this.service = service;
+  public TripController(TripSyncService sync, TripReviewService review, TripQueryService query) {
+    this.sync = sync;
+    this.review = review;
     this.query = query;
   }
 
   @PutMapping("/device/trips/{id}")
-  public Map<String, Object> sync(
-      @AuthenticationPrincipal Actor actor, @PathVariable UUID id, @Valid @RequestBody Sync body) {
-    return service.sync(actor, id, body);
+  public TripResponse sync(
+      @AuthenticationPrincipal Actor actor,
+      @PathVariable UUID id,
+      @Valid @RequestBody SyncRequest body) {
+    return sync.sync(actor, id, body);
   }
 
   @PostMapping("/device/trips/{id}/confirm")
-  public Map<String, Object> confirm(
+  public TripResponse confirm(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Details body) {
-    return service.confirm(actor, id, body);
+      @Valid @RequestBody DetailsRequest body) {
+    return review.confirm(actor, id, body);
   }
 
   @PatchMapping("/device/trips/{id}")
-  public Map<String, Object> editByDriver(
+  public TripResponse editByDriver(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Details body) {
-    return service.editByDriver(actor, id, body);
+      @Valid @RequestBody DetailsRequest body) {
+    return review.editByDriver(actor, id, body);
   }
 
   @GetMapping({"/trips/{id}", "/device/trips/{id}"})
-  public Map<String, Object> get(@AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
-    return service.get(actor, id);
+  public TripResponse get(@AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
+    return query.get(actor, id);
   }
 
   @GetMapping("/trips/{id}/audit")
-  public List<Map<String, Object>> audit(
+  public List<TripAuditRepository.AuditEvent> audit(
       @AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
-    return service.audit(actor, id);
+    return query.audit(actor, id);
   }
 
   @PatchMapping("/trips/{id}")
-  public Map<String, Object> edit(
+  public TripResponse edit(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Details body) {
-    return service.edit(actor, id, body);
+      @Valid @RequestBody DetailsRequest body) {
+    return review.edit(actor, id, body);
   }
 
   @PostMapping("/trips/{id}/approve")
-  public Map<String, Object> approve(
+  public TripResponse approve(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Review body) {
-    return service.approve(actor, id, body);
+      @Valid @RequestBody ReviewRequest body) {
+    return review.approve(actor, id, body);
   }
 
   @PostMapping("/trips/{id}/request-changes")
-  public Map<String, Object> requestChanges(
+  public TripResponse requestChanges(
       @AuthenticationPrincipal Actor actor,
       @PathVariable UUID id,
-      @Valid @RequestBody Review body) {
-    return service.requestChanges(actor, id, body);
+      @Valid @RequestBody ReviewRequest body) {
+    return review.requestChanges(actor, id, body);
   }
 
   @GetMapping({"/trips", "/device/trips"})
-  public Map<String, Object> list(
+  public PageResponse<TripResponse> list(
       @AuthenticationPrincipal Actor actor,
       @RequestParam(required = false) UUID vehicleId,
       @RequestParam(required = false) UUID driverId,
@@ -92,20 +99,12 @@ public class TripController {
       @RequestParam(defaultValue = "50") int size) {
     return query.list(
         actor,
-        vehicleId,
-        driverId,
-        from,
-        to,
-        state,
-        classification,
-        approval,
-        confirmed,
-        page,
-        size);
+        new Filter(
+            vehicleId, driverId, from, to, state, classification, approval, confirmed, page, size));
   }
 
   @GetMapping("/trips/gaps")
-  public Map<String, Object> gaps(
+  public GapReport gaps(
       @AuthenticationPrincipal Actor actor,
       @RequestParam String month,
       @RequestParam(required = false) UUID vehicleId) {
@@ -113,12 +112,12 @@ public class TripController {
   }
 
   @GetMapping("/device/drivers/recent")
-  public List<Map<String, Object>> recent(@AuthenticationPrincipal Actor actor) {
+  public List<RecentDriver> recent(@AuthenticationPrincipal Actor actor) {
     return query.recentDrivers(actor);
   }
 
   @GetMapping({"/drivers/{id}/recommendations", "/device/drivers/{id}/recommendations"})
-  public List<Map<String, Object>> recommendations(
+  public List<Recommendation> recommendations(
       @AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
     return query.recommendations(actor, id);
   }

@@ -16,7 +16,7 @@ public class ReportController {
   }
 
   @GetMapping("/statistics")
-  public Map<String, Object> stats(
+  public ReportModels.Statistics stats(
       @AuthenticationPrincipal Actor actor,
       @RequestParam String month,
       @RequestParam(required = false) UUID vehicleId) {
