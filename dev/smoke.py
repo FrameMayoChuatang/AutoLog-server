@@ -2,6 +2,7 @@
 """실행 중인 로컬 서버에 독립적인 가상 회사 데이터를 만들고 전체 API 흐름을 검증합니다."""
 import argparse
 import json
+import re
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -46,6 +47,7 @@ vehicle = api('POST', '/api/vehicles', {'registrationNumber': '12가3456', 'mode
 driver = api('POST', '/api/drivers', {'name': '검증 운전자', 'department': '개발팀'}, admin)['id']
 purpose = api('POST', '/api/catalog/purposes', {'name': '고객 미팅', 'active': True}, admin)['id']
 pair = api('POST', f'/api/vehicles/{vehicle}/pairing', token=admin)['token']
+assert isinstance(pair, str) and re.fullmatch(r'[0-9]{8}', pair)
 device = api('POST', '/api/device/pair', {'pairingToken': pair})['accessToken']
 trip = str(uuid.uuid4())
 payload = {'sourceRevision': 1, 'baseServerVersion': 0, 'driverId': driver,

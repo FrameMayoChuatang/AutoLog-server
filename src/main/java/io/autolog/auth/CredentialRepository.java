@@ -34,6 +34,21 @@ public class CredentialRepository {
         expires);
   }
 
+  public boolean tryCreatePairing(UUID company, UUID vehicle, String hash, Instant expires) {
+    return db.update(
+            """
+        INSERT INTO credentials(id, company_id, vehicle_id, token_hash, kind, expires_at)
+        VALUES (?, ?, ?, ?, 'PAIRING', ?)
+        ON CONFLICT (token_hash) DO NOTHING
+        """,
+            UUID.randomUUID(),
+            company,
+            vehicle,
+            hash,
+            expires)
+        == 1;
+  }
+
   public Optional<Credential> find(String hash, CredentialKind kind) {
     return db.optional(
         "SELECT id,company_id,admin_id,vehicle_id FROM credentials WHERE token_hash=? AND kind=?",

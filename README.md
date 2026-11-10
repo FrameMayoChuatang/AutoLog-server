@@ -24,6 +24,16 @@ docker compose up -d --wait
 
 기본 설정으로 바로 실행할 수 있습니다. `.env.example`은 변경할 환경변수의 예시이며 Spring Boot는 `.env` 파일을 자동으로 읽지 않습니다. 쉘에서 `export`하거나 IDE 실행 환경에 지정합니다. Docker의 `DB_PORT`를 바꾸면 `DB_URL`, `TEST_DB_URL`도 맞춰야 합니다.
 
+## 관리자 웹 없이 차량 연결
+
+1. `/docs`에서 `POST /api/auth/companies`로 기업/대표 계정을 만들거나 `POST /api/auth/login`으로 로그인합니다.
+2. 반환된 `accessToken`을 Swagger **Authorize**에 넣습니다.
+3. `POST /api/vehicles`로 차량을 등록하고 응답의 `id`를 복사합니다.
+4. `POST /api/vehicles/{id}/pairing`을 호출하면 `token`에 **8자리 숫자 코드**가 반환됩니다.
+5. 차량 앱에 코드를 입력합니다. 앱은 `POST /api/device/pair`에 `{"pairingToken":"00123456"}`처럼 문자열로 보내고, 응답의 `accessToken`으로 차량 API를 호출합니다. 앞의 0을 유지하고 이 공개 연결 요청에는 기존 관리자/차량 Bearer 헤더를 붙이지 않습니다.
+
+코드는 10분간 유효하며 한 번만 사용할 수 있습니다. 만료·사용·재발급된 코드는 다시 쓸 수 없습니다. 잘못된 입력을 반복해 `429`를 받으면 `Retry-After`만큼 기다립니다. 상세 규칙은 [차량 연결 API](docs/API.md#차량-연결)를 참고하세요.
+
 ## 검증
 
 ```sh

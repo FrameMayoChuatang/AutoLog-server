@@ -49,9 +49,19 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 | GET `/api/vehicles/{id}` | 관리자 | 차량 정보 |
 | POST `/api/vehicles` | 관리자 | `registrationNumber`, `model`, `active` |
 | PATCH `/api/vehicles/{id}` | 관리자 | 같은 필드 전체 편집. 비활성화 시 차량 토큰 폐기 |
-| POST `/api/vehicles/{id}/pairing` | 관리자 | `{token, expiresAt}` 일회용 페어링 토큰 발급 |
-| POST `/api/device/pair` | 공개 | `pairingToken`; 차량 토큰 발급 |
+| POST `/api/vehicles/{id}/pairing` | 관리자 | `{token, expiresAt}` 8자리 숫자 페어링 코드 발급 |
+| POST `/api/device/pair` | 공개 | `pairingToken`(8자리 숫자 문자열); 차량 토큰 발급 |
 | GET `/api/device/vehicle` | 차량 | 현재 연결된 자기 차량 정보 |
+
+발급 응답의 `token`은 `"00123456"`처럼 **앞의 0을 포함하는 8자리 문자열**입니다. 기존 JSON 필드명 `token` / `pairingToken`은 유지합니다. 앱은 숫자 키보드로 입력받되 정수로 변환하지 않고 다음처럼 전송합니다.
+
+```json
+{"pairingToken":"00123456"}
+```
+
+코드는 기본 10분 후 만료되고 한 번만 사용할 수 있습니다. 새 코드를 발급하면 같은 차량의 이전 코드는 즉시 폐기됩니다. 짧은 코드는 접속 토큰으로 쓸 수 없으며 관리자/차량 접속 토큰과 비밀번호 설정 토큰은 기존의 긴 랜덤 문자열을 유지합니다. DB에는 코드 원문 대신 해시만 저장하고, 중복 코드가 나오면 다시 생성합니다. 이전 43자 페어링 코드는 새 규격에 맞게 재발급해야 합니다.
+
+`POST /api/device/pair`는 연결 IP당 10분 동안 최대 20회 시도할 수 있습니다(성공·실패 모두 포함). 초과하면 `429 RATE_LIMITED`와 초 단위 `Retry-After`를 반환하므로 자동 반복 대신 안내 후 대기합니다. 단일 서버 메모리 기준이며 `X-Forwarded-For`를 신뢰하지 않습니다. 여러 서버나 프록시를 도입할 때는 공통 제한과 신뢰 프록시 설정을 함께 구성해야 합니다.
 
 페어링 결과는 `{accessToken, tokenType, expiresAt, vehicle}`입니다. 페어링 토큰을 관리자 로그인 토큰 대신 사용하지 않습니다. 차량은 반환된 `accessToken`을 안전하게 보관합니다. 페어링을 재실행하면 기존 차량 연결을 폐기합니다. 재시도 중 응답을 잃었고 일회용 토큰이 이미 사용됐다면 새 페어링 토큰을 받아야 합니다. 단일 차량 토큰으로 여러 차량을 업로드할 수 없습니다.
 
@@ -198,6 +208,7 @@ Details 예시:
 | 403 FORBIDDEN | 권한 또는 자격 증명 종류 불일치 |
 | 404 NOT_FOUND | 대상 없음 또는 접근 가능한 회사/차량 범위 밖 |
 | 409 CONFLICT / DATA_CONFLICT | 버전·상태 충돌, 중복 이메일/차량번호/목록 이름, 데이터 연결 불가 |
+| 429 RATE_LIMITED | 페어링 시도 한도 초과. `Retry-After`(초) 이후 다시 시도 |
 
 | 설정 | 기본값 |
 |---|---|

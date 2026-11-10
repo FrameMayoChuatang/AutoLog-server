@@ -81,6 +81,8 @@ public class SecurityConfig {
                               ApiErrorHandler.body("FORBIDDEN", "접근 권한이 없습니다."));
                         }))
         .addFilterBefore(
+            new PairingRateLimitFilter(json), UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(
             new BearerFilter(credentials, json), UsernamePasswordAuthenticationFilter.class)
         .build();
   }
