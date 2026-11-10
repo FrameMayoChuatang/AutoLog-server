@@ -69,13 +69,15 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 | POST `/api/device/drivers/{id}/consent` | 차량 | `granted`, `noticeVersion`; 위치정보 고지 동의/철회 이력 |
 | GET `/api/drivers/{id}/consents` | 관리자 | 동의/철회 이력 |
 | GET `/api/catalog/{kind}` | 관리자 | 목적/거래처 전체 목록 |
-| POST `/api/catalog/{kind}` | 관리자 | `name`, `active`, 거래처에만 선택 `address` |
+| POST `/api/catalog/{kind}` | 관리자 | `name`, `active`, 거래처에만 선택 `address`(최대 300자), `description`(최대 500자) |
 | PATCH `/api/catalog/{kind}/{id}` | 관리자 | 같은 필드 전체 편집 |
 | GET `/api/device/catalog/{kind}` | 차량 | 활성 항목만 조회 |
 | GET `/api/device/drivers/{id}/recommendations` | 차량 | 해당 운전자의 최근 확인된 목적·거래처 후보 |
 | GET `/api/drivers/{id}/recommendations` | 관리자 | 같은 후보 조회 |
 
 `kind`는 `purposes`, `clients`만 가능합니다. 운전자 상태는 `PENDING`, `ACTIVE`, `INACTIVE`입니다. 이름 중복이 가능하므로 표시 이름 대신 UUID로 선택하고 부서를 함께 보여줍니다. PENDING 운전자의 측정 기록도 보관하지만 ACTIVE 승인 전에는 운전자 확인을 할 수 없습니다. INACTIVE 운전자의 뒤늦은 오프라인 측정 기록도 보존하며 새 확인은 제한합니다.
+
+동의 철회(`granted=false`)는 비활성 운전자도 가능합니다. 비활성 운전자의 새 동의는 거절합니다. 과거 운전자를 그대로 둔 관리자 메타데이터 수정은 허용하고, 새 운전자 선택이나 운전자 확인에는 ACTIVE가 필요합니다.
 
 추천은 `classification`, `purposeId`, `purposeText`, `clientId`, `clientText`, `lastUsedAt`, `usageCount`를 반환합니다. 최신 확인 순 최대 5개 조합이며 확인 해제·보완 요청 기록과 비활성 목록은 제외합니다. 추천을 선택할 때 ID가 있으면 ID만 전송하고, ID가 없으면 직접 입력 텍스트를 전송합니다. 추천 응답 전체를 확인 요청으로 복사하면 안 됩니다. 위치·AI 모델·자동 확정은 사용하지 않습니다.
 
@@ -94,7 +96,9 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
   "startOdometerKm": 10000.125,
   "endOdometerKm": null,
   "lastOdometerKm": 10004.25,
-  "state": "RUNNING"
+  "state": "RUNNING",
+  "measurementSource": "PLEOS_ODOMETER",
+  "collectionIssues": []
 }
 ```
 
@@ -110,10 +114,12 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 | endOdometerKm | 종료 계기판 값. 실제 값이 없으면 null. RUNNING에는 지정 불가 |
 | lastOdometerKm | 종료 전에 저장한 마지막 관측값. 종료값을 대신하지 않음 |
 | state | RUNNING / COMPLETED / INTERRUPTED |
+| measurementSource | 선택: PLEOS_ODOMETER / UNKNOWN. 생략 시 기존 값 유지, 신규의 생략값은 null(출처 미제공) |
+| collectionIssues | 선택: DATA_UNAVAILABLE / ODOMETER_DISCONTINUITY / SAMPLING_INTERRUPTED 배열. 생략 시 기존 값 유지, 실제 복구 후 명시적 빈 배열로 해제. 전후 이력 보존 |
 
 거리는 음수가 아닌 **km**, 소수점 최대 3자리, 정수부 최대 11자리입니다. SDK의 m/float 입력은 앱에서 계약 단위와 정밀도로 변환합니다. 시각은 최대 소수점 6자리이고 시작 ≤ 관측 ≤ 종료 순서를 지킵니다. 현재 시각보다 5분 이상 미래인 입력은 400입니다.
 
-응답은 저장한 운행 필드와 `id`, `companyId`, `vehicleId`, `sourceRevision`, `serverVersion`, `classification`, `approvalStatus`, `driverConfirmedAt`, `approvedAt`, `qualityIssues`, `distanceKm`, `observedDistanceKm`, `reportEligible`를 포함합니다. 최초 `serverVersion=1`, `classification=UNCONFIRMED`, `approvalStatus=NOT_READY`입니다. 동일 요청 재전송에는 `replayed=true`가 추가됩니다. 이 내부 동기화 해시는 응답하지 않습니다.
+응답은 저장한 운행 필드와 `id`, `companyId`, `vehicleId`, `sourceRevision`, `serverVersion`, `classification`, `approvalStatus`, `driverConfirmedAt`, `approvedAt`, `qualityIssues`, `distanceKm`, `observedDistanceKm`, `durationSeconds`, `observedDurationSeconds`, `measurementLockedAt`, `measurementSource`, `collectionIssues`, `reportEligible`를 포함합니다. `durationSeconds`는 COMPLETED의 종료-시작, `observedDurationSeconds`는 마지막 관측-시작(각각 초)이며 해당 시각이 없으면 null입니다. 서버 현재 시각으로 경과 시간을 추정하지 않습니다. 최초 `serverVersion=1`, `classification=UNCONFIRMED`, `approvalStatus=NOT_READY`입니다. 동일 요청 재전송에는 `replayed=true`가 추가됩니다. 이 내부 동기화 해시는 응답하지 않습니다.
 
 ### 재전송과 충돌 처리
 
@@ -124,19 +130,22 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 5. 409면 `GET /api/device/trips/{id}`로 현재 상태를 조회합니다. 단순 서버 버전 차이인지 관리자 편집/확인/승인인지 확인한 후 병합 가능한 측정 갱신만 새 revision으로 보냅니다. 무조건 버전 숫자만 바꾸어 덮어쓰면 안 됩니다.
 6. 401이면 토큰 만료·폐기 상태입니다. 관리자에게 새 페어링 토큰을 받아 연결합니다. 400/404는 데이터를 수정하기 전까지 무한 재전송하지 않습니다.
 
-같은 revision의 다른 payload, 더 낮은 revision, 오래된 baseServerVersion은 409입니다. 확인된 기록의 원본은 동기화로 덮어쓸 수 없습니다. 같은 측정 요청을 다시 보내도 이후의 관리자 수정/승인을 되돌리지 않습니다. 표시되는 현재 버전이 과거 ACK보다 높을 수 있습니다.
+같은 revision의 다른 payload, 더 낮은 revision, 오래된 baseServerVersion은 409입니다. 한 번이라도 확인된 기록은 `measurementLockedAt`으로 원본을 잠급니다. 보완 요청·운전자 변경·미확인 재분류로 현재 확인이 해제되어도 원본은 동기화로 덮어쓸 수 없습니다. 새 선택 필드를 보내지 않는 이전 앱의 동일 요청 재시도도 호환됩니다. 같은 측정 요청을 다시 보내도 이후의 관리자 수정/승인을 되돌리지 않습니다. 표시되는 현재 버전이 과거 ACK보다 높을 수 있습니다.
 
-강제 종료 시 마지막 스냅샷만 있는 기록은 INTERRUPTED로 보내고 end 값을 추정해서 채우지 않습니다. 실제 종료값을 확보하면 버전을 확인하여 COMPLETED로 갱신합니다. 운전자 교대·경유 분할은 기존 구간을 실제 값으로 종료하고 새 tripId로 다음 구간을 만듭니다. 기존 구간의 driverId를 다른 사람으로 바꾸려는 동기화는 거절합니다.
+강제 종료 시 마지막 스냅샷만 있는 기록은 INTERRUPTED로 보내고 end 값을 추정해서 채우지 않습니다. 실제 종료값을 확보하면 버전을 확인하여 COMPLETED로 갱신합니다. 중간 정차·경유는 종료 버튼을 누르지 않았다면 같은 tripId의 RUNNING을 유지합니다. 실제 운전자 교대는 기존 구간을 실제 값으로 종료하고 새 tripId로 다음 구간을 만듭니다. 기존 구간의 driverId를 다른 사람으로 바꾸려는 동기화는 거절합니다.
+
+유효한 마지막 누적거리·관측 시각을 더 작은 값·과거 시각으로 되돌리는 갱신은 409입니다. 마지막 관측 필드를 생략해도 저장값은 유지합니다. 기존 관측값을 둔 채 시각만 새로 보내면 이전 값을 최신 관측처럼 보이게 하므로 400입니다. 시각을 갱신할 때는 계기판 값도 함께 보냅니다. 저장된 마지막 관측보다 이른 종료 시각은 400입니다.
 
 ### 품질 표시
 
-`INCOMPLETE`, `MISSING_START_ODOMETER`, `MISSING_END_ODOMETER`, `ZERO_START_ODOMETER`, `ODOMETER_REGRESSION`, `ZERO_DURATION_WITH_DISTANCE`를 사용합니다. 문제가 있으면 최종 `distanceKm=null`이며 확인/승인을 거절합니다. 정상 미완료 관측값은 `observedDistanceKm`로만 제공합니다. 전송 구조 오류와 달리 계기판 누락·역전은 실제로 발생할 수 있는 기록이므로 서버가 보존합니다.
+`INCOMPLETE`, `MISSING_START_ODOMETER`, `MISSING_END_ODOMETER`, `ZERO_START_ODOMETER`, `ODOMETER_REGRESSION`, `ZERO_DURATION_WITH_DISTANCE`, `LAST_ODOMETER_BEFORE_START`, `LAST_ODOMETER_AFTER_END`와 앱이 보고한 `collectionIssues`를 사용합니다. 문제가 있으면 최종 `distanceKm=null`이며 확인/승인을 거절합니다. 정상 미완료 관측값은 `observedDistanceKm`로만 제공합니다. 전송 구조 오류와 달리 계기판 누락·역전은 실제로 발생할 수 있는 기록이므로 서버가 보존합니다.
 
 ## 운전자 확인·관리자 검토
 
 | 메서드·경로 | 권한 | 요청 |
 |---|---|---|
-| POST `/api/device/trips/{id}/confirm` | 해당 차량 | 아래 Details |
+| POST `/api/device/trips/{id}/confirm` | 해당 차량 | 아래 Details. 이미 확인한 기록의 재확인에는 reason 필수 |
+| PATCH `/api/device/trips/{id}` | 해당 차량 | 아래 Details + 필수 reason. 종료된 미승인 기록의 분류 편집, 확인 해제 |
 | PATCH `/api/trips/{id}` | 관리자 | 아래 Details + 필수 reason |
 | POST `/api/trips/{id}/approve` | 관리자 | `expectedVersion`, 선택 `reason` |
 | POST `/api/trips/{id}/request-changes` | 관리자 | `expectedVersion`, 필수 `reason` |
@@ -158,15 +167,15 @@ Details 예시:
 }
 ```
 
-`classification`은 COMMUTE(출퇴근), BUSINESS(업무), PERSONAL(개인)을 선택합니다. BUSINESS에는 purposeId 또는 purposeText가 필요합니다. 각각 ID와 직접 입력 텍스트를 동시에 넣을 수 없습니다. 거래처는 선택 항목입니다. `purposeText/clientText` 최대 200자, `note/reason` 최대 1,000자입니다.
+`classification`은 COMMUTE(출퇴근), BUSINESS(업무), PERSONAL(개인), UNCONFIRMED(미확인)입니다. PATCH에서는 UNCONFIRMED를 선택해 확인을 해제할 수 있고, confirm에서는 미확인 분류를 거절합니다. BUSINESS에는 purposeId 또는 purposeText가 필요합니다. 각각 ID와 직접 입력 텍스트를 동시에 넣을 수 없습니다. 거래처는 선택 항목입니다. `purposeText/clientText` 최대 200자, `note/reason` 최대 1,000자입니다.
 
-확인은 정상 완료·활성 운전자 조건에서 PENDING으로 변경합니다. 관리자는 PENDING만 승인할 수 있습니다. 같은 차량의 이미 승인된 기록과 시간 또는 계기판 구간이 겹치면 409입니다. 승인 후 관리자 편집은 승인 정보를 지우고 PENDING으로 되돌립니다. 운전자 자체를 수정한 경우에는 driverConfirmedAt도 해제되어 NOT_READY가 되고 새 운전자 확인이 필요합니다. 보완 요청은 CHANGES_REQUESTED로 바꾸고 운전자 확인을 해제합니다.
+확인은 정상 완료·활성 운전자 조건에서 PENDING으로 변경합니다. 관리자는 PENDING만 승인할 수 있습니다. 같은 차량의 이미 승인된 기록과 시간 또는 계기판 구간이 겹치면 409입니다. 승인 후 관리자 편집은 승인 정보를 지우고 PENDING으로 되돌립니다. 운전자 자체를 수정하거나 UNCONFIRMED로 재분류하면 driverConfirmedAt도 해제되어 NOT_READY가 되고 새 확인이 필요합니다. 차량의 PATCH도 확인을 해제하며, 이미 승인된 기록은 관리자에게 수정 요청해야 합니다. 보완 요청은 CHANGES_REQUESTED로 바꾸고 운전자 확인을 해제합니다.
 
 동시 편집에는 `expectedVersion` 충돌 409를 반환합니다. 새 상태를 다시 읽고 변경 내용을 검토해야 합니다. 관리자 편집은 계기판 원본·운행 시각을 임의로 고치지 않습니다.
 
 ## 조회·통계·보고서
 
-- `GET /api/trips`, `GET /api/device/trips`: `vehicleId`, `driverId`, `from`, `to`, `state`, `classification`, `approval`, `page=0`, `size=50`. size 1~200, page 0~100000. 기간은 시작 시각 기준 `from <= startedAt < to`. 모든 기간/필터는 선택입니다.
+- `GET /api/trips`, `GET /api/device/trips`: `vehicleId`, `driverId`, `from`, `to`, `state`, `classification`, `approval`, `confirmed`, `page=0`, `size=50`. size 1~200, page 0~100000. 기간은 시작 시각 기준 `from <= startedAt < to`. 모든 기간/필터는 선택입니다. `confirmed=true/false`는 실제 `driverConfirmedAt` 존재 여부이며 분류·승인 상태와 별개입니다. 목록과 total은 같은 DB 스냅샷입니다.
 - 응답: `{items: [...], total, page, size}`. 시작 시각 내림차순, 동일 시각에는 UUID 내림차순입니다. 차량은 자기 차량 기록만 볼 수 있습니다.
 - `GET /api/trips/{id}`, `GET /api/device/trips/{id}`: 단건.
 - `GET /api/trips/gaps?month=YYYY-MM&vehicleId=...`: 관리자 공백 검토.

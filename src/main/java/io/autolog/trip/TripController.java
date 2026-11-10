@@ -34,6 +34,14 @@ public class TripController {
     return service.confirm(actor, id, body);
   }
 
+  @PatchMapping("/device/trips/{id}")
+  public Map<String, Object> editByDriver(
+      @AuthenticationPrincipal Actor actor,
+      @PathVariable UUID id,
+      @Valid @RequestBody Details body) {
+    return service.editByDriver(actor, id, body);
+  }
+
   @GetMapping({"/trips/{id}", "/device/trips/{id}"})
   public Map<String, Object> get(@AuthenticationPrincipal Actor actor, @PathVariable UUID id) {
     return service.get(actor, id);
@@ -79,10 +87,21 @@ public class TripController {
       @RequestParam(required = false) State state,
       @RequestParam(required = false) Classification classification,
       @RequestParam(required = false) Approval approval,
+      @RequestParam(required = false) Boolean confirmed,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "50") int size) {
     return query.list(
-        actor, vehicleId, driverId, from, to, state, classification, approval, page, size);
+        actor,
+        vehicleId,
+        driverId,
+        from,
+        to,
+        state,
+        classification,
+        approval,
+        confirmed,
+        page,
+        size);
   }
 
   @GetMapping("/trips/gaps")

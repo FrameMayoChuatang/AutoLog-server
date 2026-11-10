@@ -10,6 +10,7 @@ import java.time.*;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.*;
 
 @Service
 public class TripQueryService {
@@ -41,6 +42,7 @@ public class TripQueryService {
       db.one("SELECT id FROM vehicles WHERE company_id=? AND id=?", actor.companyId(), vehicle);
   }
 
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public Map<String, Object> list(
       Actor actor,
       UUID vehicleId,
@@ -50,6 +52,7 @@ public class TripQueryService {
       State state,
       Classification classification,
       Approval approval,
+      Boolean confirmed,
       int page,
       int size) {
     if (page < 0 || page > 100000 || size < 1 || size > 200)
@@ -79,6 +82,9 @@ public class TripQueryService {
     condition(where, args, "state", state == null ? null : state.name());
     condition(where, args, "classification", classification == null ? null : classification.name());
     condition(where, args, "approval_status", approval == null ? null : approval.name());
+    if (confirmed != null)
+      where.append(
+          confirmed ? " AND driver_confirmed_at IS NOT NULL" : " AND driver_confirmed_at IS NULL");
     long total =
         number(db.one("SELECT count(*) AS total FROM trips" + where, args.toArray()), "total");
     args.add(size);
@@ -104,6 +110,11 @@ public class TripQueryService {
   }
 
   public List<Map<String, Object>> monthly(Actor actor, String month, UUID vehicleId) {
+    return monthly(actor, month, vehicleId, null);
+  }
+
+  public List<Map<String, Object>> monthly(
+      Actor actor, String month, UUID vehicleId, Integer limit) {
     vehicle(actor, vehicleId);
     Period period = month(month);
     String sql =
@@ -113,16 +124,19 @@ public class TripQueryService {
       sql += " AND t.vehicle_id=?";
       args.add(vehicleId);
     }
-    return db.list(sql + " ORDER BY t.vehicle_id,t.started_at,t.id", args.toArray()).stream()
-        .map(TripService::decorate)
-        .toList();
+    sql += " ORDER BY t.vehicle_id,t.started_at,t.id";
+    if (limit != null) {
+      sql += " LIMIT ?";
+      args.add(limit);
+    }
+    return db.list(sql, args.toArray()).stream().map(TripService::decorate).toList();
   }
 
   public Map<String, Object> gaps(Actor actor, String month, UUID vehicleId) {
     vehicle(actor, vehicleId);
     Period period = month(month);
     String sql =
-        "WITH ordered AS (SELECT id,vehicle_id,started_at,start_odometer_km,lag(id) OVER w AS previous_id,lag(ended_at) OVER w AS previous_end,lag(end_odometer_km) OVER w AS previous_odometer,lag(state) OVER w AS previous_state,lag(start_odometer_km) OVER w AS previous_start_odometer,lag(started_at) OVER w AS previous_started_at FROM trips WHERE company_id=?";
+        "WITH ordered AS (SELECT id,vehicle_id,started_at,start_odometer_km,lag(id) OVER w AS previous_id,lag(ended_at) OVER w AS previous_end,lag(end_odometer_km) OVER w AS previous_odometer,lag(state) OVER w AS previous_state,lag(start_odometer_km) OVER w AS previous_start_odometer,lag(started_at) OVER w AS previous_started_at,lag(collection_issues) OVER w AS previous_collection_issues,lag(last_odometer_km) OVER w AS previous_last_odometer,max(ended_at) OVER (w ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS preceding_end FROM trips WHERE company_id=?";
     List<Object> args = new ArrayList<>();
     args.add(actor.companyId());
     if (vehicleId != null) {
@@ -145,11 +159,19 @@ public class TripQueryService {
       if (row.get("previousId") == null) issue = "NO_PREVIOUS_RECORDED_TRIP";
       else if (!"COMPLETED".equals(text(row, "previousState"))) issue = "INCOMPLETE_PREVIOUS_TRIP";
       else if (row.get("previousEnd") == null
-          || ((Instant) row.get("previousEnd")).isAfter((Instant) row.get("startedAt")))
-        issue = "OVERLAPPING_TRIPS";
+          || (row.get("precedingEnd") != null
+              && (((Instant) row.get("precedingEnd")).isAfter((Instant) row.get("startedAt"))
+                  || ((Instant) row.get("precedingEnd"))
+                      .isAfter((Instant) row.get("previousEnd"))))) issue = "OVERLAPPING_TRIPS";
       else if (start == null || previous == null || start.signum() == 0)
         issue = "MISSING_OR_ZERO_ODOMETER";
-      else if (previousStart == null
+      else if ((row.get("previousCollectionIssues") instanceof List<?> reported
+              && !reported.isEmpty())
+          || (decimal(row, "previousLastOdometer") != null
+              && (decimal(row, "previousLastOdometer").compareTo(previous) > 0
+                  || (previousStart != null
+                      && decimal(row, "previousLastOdometer").compareTo(previousStart) < 0)))
+          || previousStart == null
           || previousStart.signum() == 0
           || previous.compareTo(previousStart) < 0
           || (previous.compareTo(previousStart) > 0

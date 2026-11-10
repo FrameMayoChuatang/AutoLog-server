@@ -61,6 +61,11 @@ api('POST', f'/api/device/trips/{trip}/confirm', {
 assert api('POST', f'/api/trips/{trip}/approve', {'expectedVersion': 3}, admin)['reportEligible'] is True
 stats = api('GET', '/api/statistics?month=2026-10', token=admin)
 assert stats['approvedKm'] == 12.5 and stats['approvedCount'] == 1
+assert stats['vehicles'][0]['approvedDrivingDays'] == 1
+assert stats['vehicles'][0]['currentMonthEnd']['status'] == 'LAST_KNOWN_REQUIRES_REVIEW'
+assert stats['pendingApprovalKm'] == 0 and stats['unconfirmedKnownKm'] == 0
+assert api('GET', '/api/trips?confirmed=true', token=admin)['total'] == 1
+assert api('GET', f'/api/device/trips/{trip}', token=device)['durationSeconds'] == 3600
 output = Path(args.output_dir)
 output.mkdir(parents=True, exist_ok=True)
 for name in ('monthly', 'nts-draft'):

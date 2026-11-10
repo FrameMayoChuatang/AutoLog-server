@@ -104,8 +104,8 @@ class ReportApiTest extends ApiTestSupport {
       var sheet = book.getSheet("차량1");
       assertThat(sheet).isNotNull();
       assertThat(sheet.getRow(1).getCell(3).getCellType()).isEqualTo(CellType.BLANK);
-      assertThat(sheet.getRow(5).getCell(1).getCellType()).isEqualTo(CellType.BLANK);
-      assertThat(sheet.getRow(5).getCell(2).getCellType()).isEqualTo(CellType.BLANK);
+      assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("개발팀");
+      assertThat(sheet.getRow(5).getCell(2).getStringCellValue()).isEqualTo("홍길동");
       assertThat(sheet.getRow(5).getCell(3).getNumericCellValue()).isEqualTo(100);
       assertThat(sheet.getRow(5).getCell(4).getNumericCellValue()).isEqualTo(110);
       assertThat(sheet.getRow(5).getCell(6).getNumericCellValue()).isEqualTo(10);
@@ -113,7 +113,7 @@ class ReportApiTest extends ApiTestSupport {
       assertThat(sheet.getRow(5).getCell(10).getStringCellValue()).isEqualTo("홍길동");
       assertThat(sheet.getRow(7).getCell(1).getCellType()).isEqualTo(CellType.BLANK);
       assertThat(book.getSheet("안내").getRow(6).getCell(1).getStringCellValue())
-          .isEqualTo("autolog-nts-2025-8-v1");
+          .isEqualTo("autolog-nts-2025-8-v2");
     }
   }
 
@@ -137,5 +137,67 @@ class ReportApiTest extends ApiTestSupport {
                     .getContentAsByteArray()))) {
       assertThat(book.getSheet("승인 운행기록").getLastRowNum()).isEqualTo(1);
     }
+  }
+
+  @Test
+  void vehicleSummaryIncludesDaysMonthEndEvidenceAndSeparateUnconfirmedDistance() throws Exception {
+    approved("BUSINESS", "2026-09-30T14:00:00Z", "2026-09-30T15:00:00Z", 90, 100);
+    approved("BUSINESS", START, END, 100, 110);
+    approved("COMMUTE", "2026-10-10T02:00:00Z", "2026-10-10T03:00:00Z", 110, 115);
+    String pending = UUID.randomUUID().toString();
+    completed(pending, "2026-10-11T00:00:00Z", "2026-10-11T01:00:00Z", 115, 120);
+    call("POST", "/api/device/trips/" + pending + "/confirm", device, details(1, "BUSINESS"), 200);
+    String unconfirmed = UUID.randomUUID().toString();
+    completed(unconfirmed, "2026-10-12T00:00:00Z", "2026-10-12T01:00:00Z", 120, 127);
+    call(
+        "POST",
+        "/api/vehicles",
+        owner,
+        Map.of("registrationNumber", "34나5678", "model", "기록 없는 차량", "active", true),
+        201);
+    var stats = call("GET", "/api/statistics?month=2026-10", owner, null, 200);
+    assertThat(stats.path("unconfirmedKnownKm").asInt()).isEqualTo(7);
+    assertThat(stats.path("pendingApprovalKm").asInt()).isEqualTo(5);
+    assertThat(stats.path("unreviewedKnownKm").asInt()).isEqualTo(12);
+    assertThat(stats.path("vehicles").size()).isEqualTo(2);
+    var summary = stats.path("vehicles").get(0);
+    assertThat(summary.path("approvedDrivingDays").asInt()).isEqualTo(1);
+    assertThat(summary.path("approvedDurationSeconds").asInt()).isEqualTo(7200);
+    assertThat(summary.path("previousMonthEnd").path("odometerKm").asInt()).isEqualTo(100);
+    assertThat(summary.path("previousMonthEnd").path("status").asText()).isEqualTo("AT_BOUNDARY");
+    assertThat(summary.path("currentMonthEnd").path("odometerKm").asInt()).isEqualTo(115);
+    assertThat(summary.path("currentMonthEnd").path("observedAt").asText())
+        .isEqualTo("2026-10-10T03:00:00Z");
+    assertThat(summary.path("currentMonthEnd").path("status").asText())
+        .isEqualTo("LAST_KNOWN_REQUIRES_REVIEW");
+    var empty = stats.path("vehicles").get(1);
+    assertThat(empty.path("tripCount").asInt()).isZero();
+    assertThat(empty.path("currentMonthEnd").path("odometerKm").isNull()).isTrue();
+    assertThat(empty.path("currentMonthEnd").path("status").asText()).isEqualTo("MISSING");
+    try (var book =
+        new XSSFWorkbook(
+            new ByteArrayInputStream(
+                response("GET", "/api/reports/monthly.xlsx?month=2026-10", owner, null)
+                    .getResponse()
+                    .getContentAsByteArray()))) {
+      var sheet = book.getSheet("차량별 월간 집계");
+      assertThat(sheet.getLastRowNum()).isEqualTo(2);
+      assertThat(sheet.getRow(1).getCell(2).getNumericCellValue()).isEqualTo(1);
+      assertThat(sheet.getRow(1).getCell(3).getNumericCellValue()).isEqualTo(15);
+      assertThat(sheet.getRow(1).getCell(7).getNumericCellValue()).isEqualTo(7);
+      assertThat(sheet.getRow(1).getCell(8).getNumericCellValue()).isEqualTo(5);
+      assertThat(sheet.getRow(2).getCell(12).getCellType()).isEqualTo(CellType.BLANK);
+      assertThat(sheet.getRow(1).getCell(15).getStringCellValue()).contains("당월 말 계기판 확인 필요");
+    }
+    call(
+        "POST",
+        "/api/trips/" + pending + "/request-changes",
+        owner,
+        Map.of("expectedVersion", 2, "reason", "재확인"),
+        200);
+    var returned = call("GET", "/api/statistics?month=2026-10", owner, null, 200);
+    assertThat(returned.path("unconfirmedKnownKm").asInt()).isEqualTo(12);
+    assertThat(returned.path("pendingApprovalKm").asInt()).isZero();
+    assertThat(returned.path("changesRequestedKm").asInt()).isEqualTo(5);
   }
 }
