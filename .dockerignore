@@ -1,0 +1,6 @@
+**
+!target/
+target/*
+!target/autolog-server-0.1.0-SNAPSHOT.jar
+!Dockerfile
+!.dockerignore
