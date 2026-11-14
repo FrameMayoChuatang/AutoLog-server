@@ -50,8 +50,7 @@ public class FleetService {
   @Transactional
   public Driver createDriver(Actor actor, FleetRequests.DriverCreateRequest body) {
     var id = UUID.randomUUID();
-    repository.createDriver(
-        actor.companyId(), id, body, actor.isDevice() ? DriverStatus.PENDING : DriverStatus.ACTIVE);
+    repository.createDriver(actor.companyId(), id, body, DriverStatus.ACTIVE);
     return repository.driver(actor.companyId(), id, false);
   }
 

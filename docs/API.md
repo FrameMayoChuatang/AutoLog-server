@@ -74,7 +74,7 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 | PATCH `/api/drivers/{id}` | 관리자 | `name`, `department`, `status` 전체 편집 |
 | POST `/api/drivers/{id}/approve` | 관리자 | PENDING → ACTIVE |
 | GET `/api/device/drivers?q=` | 차량 | 회사의 ACTIVE/PENDING 이름·부서 목록 |
-| POST `/api/device/drivers` | 차량 | `name`, `department`; PENDING 등록 |
+| POST `/api/device/drivers` | 차량 | `name`, `department`; 관리자 승인 없이 즉시 ACTIVE 등록 |
 | GET `/api/device/drivers/recent` | 차량 | 이 차량에서 최근 사용한 ACTIVE 운전자 최대 5명 |
 | POST `/api/device/drivers/{id}/consent` | 차량 | `granted`, `noticeVersion`; 위치정보 고지 동의/철회 이력 |
 | GET `/api/drivers/{id}/consents` | 관리자 | 동의/철회 이력 |
@@ -84,6 +84,10 @@ STAFF 생성은 `{ "admin": {...}, "invitation": {"setupToken":"...", "setupLink
 | GET `/api/device/catalog/{kind}` | 차량 | 활성 항목만 조회 |
 | GET `/api/device/drivers/{id}/recommendations` | 차량 | 해당 운전자의 최근 확인된 목적·거래처 후보 |
 | GET `/api/drivers/{id}/recommendations` | 관리자 | 같은 후보 조회 |
+
+차량과 관리자에서 새로 생성한 운전자는 모두 `201` 응답의 `status`가 `ACTIVE`입니다. 차량 앱은 등록 직후 반환된 `id`로 운전자를 선택하고 운행 기록·운전자 확인을 진행할 수 있습니다. 별도 관리자 승인 호출이나 승인 대기 안내가 필요하지 않습니다.
+
+이번 정책은 신규 운전자 등록에 적용합니다. 기존 `PENDING`/`INACTIVE` 데이터는 일괄 변경하지 않으며, 이전 데이터 처리를 위한 관리자 승인 API는 유지합니다. 운전자 등록 상태와 운행기록의 `approvalStatus`는 별개이고, 운행기록은 기존 확인 → 관리자 승인 → 보고서 반영 규칙을 따릅니다.
 
 `kind`는 `purposes`, `clients`만 가능합니다. 운전자 상태는 `PENDING`, `ACTIVE`, `INACTIVE`입니다. 이름 중복이 가능하므로 표시 이름 대신 UUID로 선택하고 부서를 함께 보여줍니다. PENDING 운전자의 측정 기록도 보관하지만 ACTIVE 승인 전에는 운전자 확인을 할 수 없습니다. INACTIVE 운전자의 뒤늦은 오프라인 측정 기록도 보존하며 새 확인은 제한합니다.
 

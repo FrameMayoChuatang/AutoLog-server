@@ -26,17 +26,19 @@ class FleetApiTest extends ApiTestSupport {
   }
 
   @Test
-  void pendingDriversNeedApprovalAndPreserveConsentHistory() throws Exception {
-    var pending =
+  void deviceDriversAreImmediatelyActiveAndPreserveConsentHistory() throws Exception {
+    var created =
         call("POST", "/api/device/drivers", device, Map.of("name", "신입", "department", "영업"), 201);
-    String id = pending.path("id").asText();
-    assertThat(pending.path("status").asText()).isEqualTo("PENDING");
-    call("POST", "/api/drivers/" + id + "/approve", device, null, 403);
+    String id = created.path("id").asText();
+    assertThat(created.path("status").asText()).isEqualTo("ACTIVE");
+    assertThat(created.path("companyId").asText()).isEqualTo(company);
     assertThat(
-            call("POST", "/api/drivers/" + id + "/approve", owner, null, 200)
+            call("GET", "/api/device/drivers?q=신입", device, null, 200)
+                .get(0)
                 .path("status")
                 .asText())
         .isEqualTo("ACTIVE");
+    call("POST", "/api/drivers/" + id + "/approve", device, null, 403);
     call(
         "POST",
         "/api/device/drivers/" + id + "/consent",

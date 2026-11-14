@@ -246,6 +246,30 @@ class TripApiTest extends ApiTestSupport {
   }
 
   @Test
+  void deviceCreatedDriverCanConfirmTripWithoutAdminApproval() throws Exception {
+    var created =
+        call(
+            "POST",
+            "/api/device/drivers",
+            device,
+            Map.of("name", "즉시 사용", "department", "영업"),
+            201);
+    driver = created.path("id").asText();
+    assertThat(created.path("status").asText()).isEqualTo("ACTIVE");
+    String id = UUID.randomUUID().toString();
+    completed(id, START, END, 100, 110);
+    var confirmed =
+        call("POST", "/api/device/trips/" + id + "/confirm", device, details(1, "BUSINESS"), 200);
+    assertThat(confirmed.path("driverId").asText()).isEqualTo(driver);
+    assertThat(confirmed.path("driverConfirmedAt").isNull()).isFalse();
+    assertThat(confirmed.path("approvalStatus").asText()).isEqualTo("PENDING");
+    assertThat(confirmed.path("reportEligible").asBoolean()).isFalse();
+    assertThat(
+            call("GET", "/api/device/drivers/recent", device, null, 200).get(0).path("id").asText())
+        .isEqualTo(driver);
+  }
+
+  @Test
   void foreignDriverAndPurposeAreRejectedAndPendingDriverCannotConfirm() throws Exception {
     String other = signup("other@example.test").path("accessToken").asText();
     String foreignDriver =
@@ -264,6 +288,12 @@ class TripApiTest extends ApiTestSupport {
         call("POST", "/api/device/drivers", device, Map.of("name", "대기", "department", "영업"), 201)
             .path("id")
             .asText();
+    call(
+        "PATCH",
+        "/api/drivers/" + pending,
+        owner,
+        Map.of("name", "대기", "department", "영업", "status", "PENDING"),
+        200);
     String id2 = UUID.randomUUID().toString();
     body.put("driverId", pending);
     call("PUT", "/api/device/trips/" + id2, device, body, 200);
