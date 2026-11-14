@@ -1,0 +1,163 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autolog-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: autolog_test
+          POSTGRES_USER: autolog
+          POSTGRES_PASSWORD: autolog
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U autolog -d autolog_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DB_URL: jdbc:postgresql://localhost:5432/autolog_test
+      TEST_DB_USERNAME: autolog
+      TEST_DB_PASSWORD: autolog
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: JDK 21 설정
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: 테스트·포맷 검사·JAR 빌드
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+      - name: 테스트 결과 보관
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: test-results
+          path: target/surefire-reports/*.xml
+          retention-days: 7
+      - name: Docker Hub 로그인
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Docker 빌더 설정
+        if: github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: 이미지 빌드·업로드
+        if: github.ref == 'refs/heads/main'
+        id: image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ehdus/autolog-server:sha-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: SSH 설정 확인
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+          EC2_FINGERPRINT: ${{ secrets.EC2_FINGERPRINT }}
+        run: |
+          for setting in EC2_HOST EC2_KEY EC2_FINGERPRINT; do
+            if [[ -z "${!setting}" ]]; then
+              echo "$setting Secret을 등록하세요." >&2
+              exit 1
+            fi
+          done
+      - name: EC2 SSH 접속·API 교체
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          IMAGE_DIGEST: ${{ needs.verify.outputs.digest }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
+          key: ${{ secrets.EC2_KEY }}
+          fingerprint: ${{ secrets.EC2_FINGERPRINT }}
+          command_timeout: 10m
+          envs: IMAGE_DIGEST
+          script: |
+            set -eu
+            sudo -n bash -s -- "$IMAGE_DIGEST" <<'DEPLOY'
+            set -euo pipefail
+            umask 077
+            [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+            cd /home/ubuntu/autolog
+            test -r .env
+            exec 9>/var/lock/autolog-deploy.lock
+            flock -n 9
+            docker network inspect autolog >/dev/null
+            docker exec autolog-db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null
+            image="ehdus/autolog-server@$1"
+
+            # 다운로드가 성공한 뒤 현재 API를 교체한다.
+            docker pull "$image"
+            docker container inspect autolog-api >/dev/null
+            if docker container inspect autolog-api-previous >/dev/null 2>&1; then
+              [[ "$(docker inspect --format '{{.State.Running}}' autolog-api-previous)" == false ]] || exit 1
+              previous_image=$(docker inspect --format '{{.Config.Image}}' autolog-api-previous)
+              [[ "$previous_image" == ehdus/autolog-server:* || "$previous_image" == ehdus/autolog-server@sha256:* ]] || exit 1
+              docker rm autolog-api-previous
+            fi
+            if ! docker stop --time 30 autolog-api; then
+              docker start autolog-api
+              exit 1
+            fi
+            if ! docker rename autolog-api autolog-api-previous; then
+              docker start autolog-api
+              exit 1
+            fi
+
+            if docker run -d --name autolog-api --network autolog \
+              --restart unless-stopped --env-file "$PWD/.env" \
+              --label "io.autolog.deploy.digest=$1" \
+              -p 127.0.0.1:8080:8080 \
+              --log-opt max-size=10m --log-opt max-file=3 "$image" \
+              && curl -fsS --connect-timeout 2 --max-time 5 \
+                --retry 15 --retry-delay 2 --retry-all-errors \
+                http://127.0.0.1:8080/actuator/health; then
+              exit 0
+            fi
+
+            # API만 복구한다. 이미 적용된 DB 마이그레이션은 되돌리지 않는다.
+            docker logs --tail 80 autolog-api || true
+            docker rm -f autolog-api || true
+            docker rename autolog-api-previous autolog-api
+            docker start autolog-api
+            exit 1
+            DEPLOY
+      - name: 외부 HTTPS 확인
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          curl -fsS --proto '=https' --connect-timeout 5 --max-time 10 \
+            --retry 5 --retry-delay 3 --retry-all-errors \
+            "https://$EC2_HOST/actuator/health"
