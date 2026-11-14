@@ -44,11 +44,13 @@ staff_session = api('POST', '/api/auth/password/setup', {
 })
 admin = staff_session['accessToken']
 vehicle = api('POST', '/api/vehicles', {'registrationNumber': '12가3456', 'model': '검증 차량', 'active': True}, admin)['id']
-driver = api('POST', '/api/drivers', {'name': '검증 운전자', 'department': '개발팀'}, admin)['id']
 purpose = api('POST', '/api/catalog/purposes', {'name': '고객 미팅', 'active': True}, admin)['id']
 pair = api('POST', f'/api/vehicles/{vehicle}/pairing', token=admin)['token']
 assert isinstance(pair, str) and re.fullmatch(r'[0-9]{8}', pair)
 device = api('POST', '/api/device/pair', {'pairingToken': pair})['accessToken']
+profile = api('POST', '/api/device/drivers', {'name': '검증 운전자', 'department': '개발팀'}, device)
+assert profile['status'] == 'ACTIVE'
+driver = profile['id']
 trip = str(uuid.uuid4())
 payload = {'sourceRevision': 1, 'baseServerVersion': 0, 'driverId': driver,
            'startedAt': '2026-10-10T00:00:00Z', 'startOdometerKm': 10000, 'state': 'RUNNING'}
@@ -79,5 +81,5 @@ assert len(api('GET', f'/api/trips/{trip}/audit', token=admin)) == 4
 assert api('GET', '/api/docs')['info']['title'] == 'AutoLog Server API'
 for token in (owner, admin, device):
     api('POST', '/api/auth/logout', token=token)
-print(f'SMOKE PASSED: signup → staff → pairing → sync/retry → confirmation → approval → statistics → XLSX')
+print(f'SMOKE PASSED: signup → staff → pairing → device driver auto-approval → sync/retry → confirmation → approval → statistics → XLSX')
 print(f'Company: {session["admin"]["companyId"]}; reports: {output.resolve()}')

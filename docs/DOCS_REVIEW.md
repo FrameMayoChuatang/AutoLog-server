@@ -4,6 +4,8 @@
 
 검토는 서버 구현과 연동 계약을 대상으로 합니다. 차량 앱 UI·Pleos SDK 실차 수집·백그라운드 실행·오프라인 로컬 DB를 이 저장소에서 구현하거나 실차 검증한 것으로 간주하지 않습니다. 앱 책임인 기능도 아래에 남겨 통합 시 빠지지 않도록 했습니다.
 
+2026-11-14 사용자 요청으로 신규 운전자 등록 정책을 변경했습니다. 차량·관리자 등록 모두 즉시 `ACTIVE`이며, 아래 원문의 차량 신규 승인 대기 요구보다 이 변경 합의를 우선합니다. 운행기록의 관리자 승인 규칙은 유지합니다.
+
 ## 발견 및 수정
 
 - 보완 요청이 현재 운전자 확인 시각을 해제하면 확인했던 원시 거리도 다시 동기화할 수 있었습니다. 영구 측정 잠금을 추가하고 기존 확인 기록·감사 이력을 마이그레이션했습니다.
@@ -40,7 +42,7 @@
 | [운행정보 조회](https://app.notion.com/p/f0312d57245383fb921601a273e2ae94) | 운전자·시간·거리·마지막 갱신, 알 수 없는 값 구분 | 마지막 관측 시각, observedDurationSeconds/observedDistanceKm, null 구분. 실시간 SDK 화면은 앱 |
 | [관리자 통합 조회](https://app.notion.com/p/ba312d57245382eb84618178c756210f) | 회사 통합 조회, 다른 회사 제외 | 관리자 회사 범위 목록/상세/통계. Auth/Trip/Report API 격리 테스트 |
 | [관리자 회원가입·로그인](https://app.notion.com/p/74b725ad366b4efaac16333d72c6382c) | 관리자 인증·보호 경로 | 합의한 회사+OWNER/STAFF, 이메일·비밀번호, 일회용 설정·토큰 폐기. AuthApiTest |
-| [운전자 등록](https://app.notion.com/p/81eb08f0a23d447cb1e78ada7b93a9ea) | 이름·부서, 차량 신규 승인 대기, 보고서 반영 | PENDING/ACTIVE, 이름 중복 가능, 운전자 스냅샷 출력. Fleet/Report API |
+| [운전자 등록](https://app.notion.com/p/81eb08f0a23d447cb1e78ada7b93a9ea) | 이름·부서, 차량 신규 승인 대기, 보고서 반영 | 변경 합의에 따라 신규 생성 즉시 ACTIVE, 이름 중복 가능, 운전자 스냅샷 출력. Fleet/Trip/Report API |
 | [운행기록 필터링](https://app.notion.com/p/68c12d572453825ab1f701dbe209570d) | 차량·운전자·기간·유형·확인 여부 | confirmed=true/false를 분류·승인과 독립 적용. `confirmedFilterDoesNotConfuseClassificationAndApproval` |
 | [운행보고서 생성](https://app.notion.com/p/caa12d572453824fb1e6810d73098bfb) | 차량별 월간, 누락 기준/미확인 구분, 합계 일치 | 승인 본표·검토/공백 및 차량별 집계. `vehicleSummaryIncludesDaysMonthEndEvidenceAndSeparateUnconfirmedDistance` |
 | [월간 운행 통계](https://app.notion.com/p/6d312d5724538213a821814e14893970) | 총/업무/개인/미확인, 미완료 임의 합산 금지 | 정상 종료·승인·미확인·승인 대기·미완료 관측 분리. `statisticsSeparateApprovedUnreviewedIncompleteAndUnknownDistance` |
