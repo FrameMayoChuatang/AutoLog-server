@@ -18,6 +18,7 @@ public class AuthService {
   private final CredentialRepository credentials;
   private final FleetRepository fleet;
   private final PasswordEncoder passwords;
+  private final ReviewPairingConfig reviewPairing;
   private final String dummyHash, setupUrl;
   private final Duration sessionTtl, setupTtl, deviceTtl, pairingTtl;
 
@@ -26,6 +27,7 @@ public class AuthService {
       CredentialRepository credentials,
       FleetRepository fleet,
       PasswordEncoder passwords,
+      ReviewPairingConfig reviewPairing,
       @Value("${autolog.setup-url}") String setupUrl,
       @Value("${autolog.session-ttl}") Duration sessionTtl,
       @Value("${autolog.setup-ttl}") Duration setupTtl,
@@ -35,6 +37,7 @@ public class AuthService {
     this.credentials = credentials;
     this.fleet = fleet;
     this.passwords = passwords;
+    this.reviewPairing = reviewPairing;
     this.setupUrl = setupUrl;
     this.sessionTtl = sessionTtl;
     this.setupTtl = setupTtl;
@@ -160,7 +163,9 @@ public class AuthService {
     Instant expires = Instant.now().plus(pairingTtl);
     for (int attempt = 0; attempt < 32; attempt++) {
       String code = TokenCodec.createPairingCode();
-      if (credentials.tryCreatePairing(actor.companyId(), vehicle, TokenCodec.hash(code), expires))
+      String hash = TokenCodec.hash(code);
+      if (reviewPairing.matches(hash)) continue;
+      if (credentials.tryCreatePairing(actor.companyId(), vehicle, hash, expires))
         return new IssuedToken(code, expires);
     }
     throw ApiException.conflict("페어링 코드를 발급하지 못했습니다. 다시 시도하세요.");
@@ -168,10 +173,20 @@ public class AuthService {
 
   @Transactional
   public DeviceSession pair(String token) {
+    String hash = TokenCodec.hash(token);
+    if (reviewPairing.matches(hash)) {
+      // Reject collisions with previously issued codes instead of connecting another company's app.
+      if (credentials.find(hash, CredentialKind.PAIRING).isPresent())
+        throw ApiException.conflict("기존 페어링 코드와 중복됩니다. 심사용 코드를 변경해 주세요.");
+      var vehicle = fleet.vehicle(reviewPairing.companyId(), reviewPairing.vehicleId(), true);
+      if (!vehicle.active()) throw ApiException.conflict("비활성 차량입니다.");
+      // Each reviewer receives a separate expiring device token without disconnecting other
+      // devices.
+      var device = issue(vehicle.companyId(), null, vehicle.id(), CredentialKind.DEVICE, deviceTtl);
+      return new DeviceSession(device.token(), "Bearer", device.expiresAt(), vehicle);
+    }
     var credential =
-        credentials
-            .find(TokenCodec.hash(token), CredentialKind.PAIRING)
-            .orElseThrow(ApiException::unauthorized);
+        credentials.find(hash, CredentialKind.PAIRING).orElseThrow(ApiException::unauthorized);
     var vehicle = fleet.vehicle(credential.companyId(), credential.vehicleId(), true);
     if (!credentials.lockValid(credential.id()) || !vehicle.active())
       throw ApiException.unauthorized();

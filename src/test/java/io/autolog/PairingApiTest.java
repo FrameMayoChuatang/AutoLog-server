@@ -12,6 +12,11 @@ import org.junit.jupiter.api.Test;
 
 class PairingApiTest extends ApiTestSupport {
   @Test
+  void reviewCodeDoesNotBypassPairingWhenReviewModeIsDisabled() throws Exception {
+    call("POST", "/api/device/pair", null, Map.of("pairingToken", "00123456"), 401);
+  }
+
+  @Test
   void issuesEightDigitsAndPreservesLeadingZerosAndLongAccessTokens() throws Exception {
     try (var tokens = mockStatic(TokenCodec.class, CALLS_REAL_METHODS)) {
       tokens.when(TokenCodec::createPairingCode).thenReturn("00123456");
