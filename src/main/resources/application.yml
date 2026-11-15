@@ -32,6 +32,11 @@ autolog:
   device-ttl: 90d
   setup-ttl: 24h
   pairing-ttl: 10m
+  review-pairing:
+    enabled: ${REVIEW_PAIRING_ENABLED:false}
+    code: ${REVIEW_PAIRING_CODE:}
+    company-id: ${REVIEW_PAIRING_COMPANY_ID:}
+    vehicle-id: ${REVIEW_PAIRING_VEHICLE_ID:}
 
 springdoc:
   api-docs:
